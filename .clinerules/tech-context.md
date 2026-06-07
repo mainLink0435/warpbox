@@ -6,6 +6,7 @@
 * **Toolchain:** Go (Golang) latest stable version.
 * **Execution:** Commands run locally via `go run` or compiled via `go build` for Windows testing.
 * **IDE:** VS Code with Cline extension.
+* When using curl, refer to "curl.exe" directly, as "curl" can be an alias for PowerShell's "Invoke-WebRequest".
 
 ## 2. Build Targets & Cross-Compilation
 
