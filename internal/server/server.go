@@ -29,8 +29,9 @@ type Server struct {
 
 // Config holds the server-specific configuration.
 type Config struct {
-	ListenAddr string
-	WebDAVRoot string
+	ListenAddr    string
+	WebDAVRoot    string
+	CDNTtlMinutes int // How long to cache CDN URLs (0 = disable)
 }
 
 // New creates a new WebDAV server.
@@ -49,7 +50,6 @@ func New(cfg Config, store *metadata.Store, cache *cache.Buffer, torBox *torbox.
 }
 
 // registerRoutes sets up the HTTP handlers for WebDAV methods.
-// The ServeMux dispatches by path, then handleWebDAV dispatches by method.
 func (s *Server) registerRoutes() {
 	handler := http.HandlerFunc(s.handleWebDAV)
 	s.mux.Handle(s.root+"/", handler)
@@ -77,20 +77,6 @@ func (s *Server) handleOptions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("DAV", "1")
 	w.Header().Set("Allow", "OPTIONS, GET, HEAD, PROPFIND")
 	w.WriteHeader(http.StatusOK)
-}
-
-// handleGet serves file content (with optional byte-range).
-func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement byte-range aware file serving via throttle → cache → CDN.
-	slog.Debug("GET request", "path", r.URL.Path)
-	http.Error(w, "not implemented", http.StatusNotImplemented)
-}
-
-// handleHead is the no-body variant of GET.
-func (s *Server) handleHead(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement HEAD.
-	slog.Debug("HEAD request", "path", r.URL.Path)
-	http.Error(w, "not implemented", http.StatusNotImplemented)
 }
 
 // Start begins listening on the configured address.
