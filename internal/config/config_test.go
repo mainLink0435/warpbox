@@ -24,8 +24,8 @@ func TestLoadDefaults(t *testing.T) {
 	}
 
 	// Check defaults.
-	if cfg.TorBox.BaseURL != "https://api.torbox.app/v1" {
-		t.Errorf("base_url = %q, want %q", cfg.TorBox.BaseURL, "https://api.torbox.app/v1")
+	if cfg.TorBox.BaseURL != "https://api.torbox.app" {
+		t.Errorf("base_url = %q, want %q", cfg.TorBox.BaseURL, "https://api.torbox.app")
 	}
 	if cfg.Server.ListenAddr != ":8080" {
 		t.Errorf("listen_addr = %q, want %q", cfg.Server.ListenAddr, ":8080")
