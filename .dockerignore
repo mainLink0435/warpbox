@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Build artefacts
+dist/
+
+# Database (local dev)
+*.db
+*.db-wal
+*.db-shm
+
+# Test logs
+attach-release*.log
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Misc
+README.md
+warpbox.png
+test-trigger.txt
+*_test.ps1

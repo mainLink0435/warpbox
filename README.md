@@ -1,6 +1,10 @@
-# Warpbox
+<div align="center">
+  <img src="warpbox.svg" width="100" alt="Warpbox" />
+  <h1>Warpbox</h1>
+  <p>A high-performance WebDAV proxy for TorBox</p>
+</div>
 
-Warpbox is a high-performance, lightweight WebDAV proxy written in Go, designed to be consumed by rclone's WebDAV backend. It mounts a cloud-hosted torrent cache (TorBox) as a native, stable local filesystem via rclone's FUSE layer. Its primary function is to act as a defensive interceptor, protecting strict upstream API limits from the aggressive scanning behaviours of media servers like Plex and Jellyfin.
+Warpbox is a lightweight WebDAV proxy written in Go, designed to be consumed by rclone's WebDAV backend. It mounts a cloud-hosted torrent cache (TorBox) as a native, stable local filesystem via rclone's FUSE layer. Its primary function is to act as a defensive interceptor, protecting strict upstream API limits from the aggressive scanning behaviours of media servers like Plex and Jellyfin.
 
 ```
 Plex/Jellyfin → rclone (FUSE mount) → WebDAV → Warpbox → TorBox API
@@ -52,7 +56,7 @@ Mount Warpbox as a local filesystem using rclone's WebDAV backend. Below are the
 
 ```
 rclone mount warpbox: /mnt/warpbox \
-  --webdav-url http://localhost:8080/webdav/ \
+  --webdav-url http://localhost:1412/webdav/ \
   --webdav-vendor other \
   --daemon
 ```
@@ -83,7 +87,7 @@ rclone mount warpbox: /mnt/warpbox \
 
 ```
 rclone mount warpbox: /mnt/warpbox \
-  --webdav-url http://localhost:8080/webdav/ \
+  --webdav-url http://localhost:1412/webdav/ \
   --webdav-vendor other \
   --buffer-size 16M \
   --vfs-cache-mode writes \
@@ -99,6 +103,29 @@ rclone mount warpbox: /mnt/warpbox \
   --max-stats-groups 0 \
   --daemon
 ```
+
+## TorBox Terms of Service Compliance
+
+Warpbox is designed to operate within TorBox's Terms of Service, available at [github.com/TorBox-App/hosted-terms_of_service](https://github.com/TorBox-App/hosted-terms_of_service).
+
+- **Rate limiting:** Warpbox's throttle queue enforces a configurable rate limit (default 250 requests/minute) to stay below TorBox's 300 RPM limit. It never bypasses or circumvents API rate limits.
+- **Private access:** All CDN URLs and content access tokens stay on your local machine. Warpbox does not share, cache publicly, or distribute any private access links.
+- **No account sharing:** Warpbox uses your own TorBox API key, configured locally. It does not bundle, resell, or distribute API keys.
+- **Fair usage:** Warpbox's architecture (SQLite metadata cache, JIT RAM buffering) minimises API calls rather than generating unnecessary requests.
+
+You are responsible for ensuring your use of warpbox complies with TorBox's current TOS. The TOS may change — refer to the canonical source linked above.
+
+## Release Process
+
+1. Tag the current commit with a semantic version:
+   ```
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+2. The CI pipeline (`.gitea/workflows/build.yml`) automatically builds binaries for all platforms (Linux amd64/arm64, Windows amd64) and pushes Docker images to the Gitea container registry.
+3. Update `docker-compose.yml` to point to the new version tag.
+
+See `.clinerules/source-control.md` for versioning conventions.
 
 ## Status
 

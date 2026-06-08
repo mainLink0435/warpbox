@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="100%" height="100%">
+  <defs>
+    <style>
+      .face-top {
+        fill: #DC6D08; /* Middle Shading */
+      }
+      .face-left {
+        fill: #5E2600; /* Darkest Shading (Deep Shadow) */
+      }
+      .face-right {
+        fill: #FFA126; /* Lightest Shading (Vibrant Golden-Orange) */
+      }
+      .mark-white {
+        fill: #FFFFFF;
+        shape-rendering: geometricPrecision;
+      }
+    </style>
+  </defs>
+  <polygon class="face-top" points="500,38 900,269 500,500 100,269" />
+  <polygon class="face-left" points="100,269 500,500 500,962 100,731" />
+  <polygon class="face-right" points="500,500 900,269 900,731 500,962" />
+  <g transform="matrix(0.4, -0.231, 0, 0.462, 500, 500)">
+    <rect class="mark-white" x="410" y="140" width="180" height="500" rx="30" ry="30" />
+    <rect class="mark-white" x="410" y="690" width="180" height="180" rx="30" ry="30" />
+  </g>
+</svg>

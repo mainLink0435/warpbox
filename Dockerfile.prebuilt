@@ -1,0 +1,20 @@
+# Warpbox — Pre-built binary Docker image
+#
+# Expects dist/warpbox (a pre-compiled statically linked binary) in the
+# build context. The binary is copied directly — no Go toolchain or
+# multi-stage build needed.
+#
+# Used by the CI publish job. For ad-hoc local builds, use the normal
+# multi-stage Dockerfile instead.
+
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata
+
+COPY warpbox.bin /usr/local/bin/warpbox
+RUN chmod 755 /usr/local/bin/warpbox
+
+VOLUME /data
+EXPOSE 1412
+
+ENTRYPOINT ["warpbox", "--config", "/data/config.yml", "--db", "/data/warpbox.db"]

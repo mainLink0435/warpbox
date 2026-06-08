@@ -23,15 +23,15 @@ torbox:
 # ---------------------------------------------------------------------------
 server:
   # Network address and port the WebDAV server listens on.
-  # Optional. Default: ":8080"
+  # Optional. Default: ":1412"
   # Type: string (host:port). Valid: any valid Go net.Listen address.
-  # Examples: ":8080" (all interfaces), "127.0.0.1:8080" (loopback only).
-  listen_addr: ":8080"
+  # Examples: ":1412" (all interfaces), "127.0.0.1:1412" (loopback only).
+  listen_addr: ":1412"
 
   # Root URL path for the WebDAV service.
   # Optional. Default: "/webdav"
   # Type: string (path). Valid: any URL path segment.
-  # rclone would use: http://localhost:8080/webdav/ as the URL.
+  # rclone would use: http://localhost:1412/webdav/ as the URL.
   webdav_root: "/webdav"
 
 # ---------------------------------------------------------------------------

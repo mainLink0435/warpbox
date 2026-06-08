@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Warpbox {{.Version}}</title>
+    <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+  .container {
+    max-width: 800px;
+    width: 100%;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+  .header img {
+    width: 120px;
+    height: auto;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+  }
+  .header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #38bdf8;
+    margin-bottom: 0.3rem;
+  }
+  .header p {
+    color: #94a3b8;
+    font-size: 0.95rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.5rem;
+  }
+  th {
+    background: #1e293b;
+    color: #38bdf8;
+    padding: 0.6rem 1rem;
+    text-align: left;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-bottom: 2px solid #334155;
+  }
+  td {
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid #1e293b;
+    font-size: 0.85rem;
+    font-family: "SF Mono", "Fira Code", "Fira Mono", monospace;
+  }
+  td:first-child {
+    color: #94a3b8;
+    width: 40%;
+  }
+  td:last-child {
+    color: #e2e8f0;
+    width: 60%;
+  }
+  .link-row td {
+    font-family: inherit;
+  }
+  .link-row a {
+    color: #38bdf8;
+    text-decoration: none;
+  }
+  .link-row a:hover {
+    text-decoration: underline;
+  }
+  .actions td { text-align: center; padding: 1rem; }
+  .btn {
+    background: #1e293b;
+    color: #38bdf8;
+    border: 1px solid #334155;
+    padding: 0.5rem 1.2rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 0.25rem;
+  }
+  .btn:hover {
+    background: #334155;
+    border-color: #38bdf8;
+  }
+  .footer {
+    text-align: center;
+    margin-top: 2rem;
+    font-size: 0.8rem;
+    color: #475569;
+  }
+  .footer a {
+    color: #64748b;
+    text-decoration: none;
+  }
+  .footer a:hover {
+    color: #94a3b8;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <img src="/warpbox.svg" alt="Warpbox logo">
+    <h1>Warpbox</h1>
+    <p>A high-performance WebDAV proxy for TorBox</p>
+  </div>
+
+  <table>
+    <tr><th colspan="2">Warpbox</th></tr>
+    <tr><td>Version</td><td>{{.Version}}</td></tr>
+    <tr><td>Uptime</td><td>{{.Uptime}}</td></tr>
+    <tr><td>File count</td><td>{{.FileCount}}</td></tr>
+    <tr class="link-row"><td>HTTP browser</td><td><a href="{{.HTTPURL}}">{{.HTTPURL}}</a></td></tr>
+    <tr class="link-row"><td>WebDAV root</td><td><a href="{{.WebDAVURL}}">{{.WebDAVURL}}</a></td></tr>
+    <tr class="link-row"><td>Infuse</td><td><a href="{{.InfuseURL}}">{{.InfuseURL}}</a></td></tr>
+    <tr class="link-row"><td>Logs</td><td><a href="{{.LogsURL}}">{{.LogsURL}}</a></td></tr>
+    <tr class="link-row"><td>Source</td><td><a href="https://REDACTED/ben/warpbox" target="_blank">ben/warpbox</a></td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="2">Memory</th></tr>
+    <tr><td>Allocated</td><td>{{.AllocMB}} MB</td></tr>
+    <tr><td>Total allocated</td><td>{{.TotalAllocMB}} MB</td></tr>
+    <tr><td>System memory</td><td>{{.SysMB}} MB</td></tr>
+    <tr><td>GC cycles</td><td>{{.NumGC}}</td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="2">Server</th></tr>
+    <tr><td>Listen address</td><td>{{.ListenAddr}}</td></tr>
+    <tr><td>WebDAV root</td><td>{{.WebDAVRoot}}</td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="2">Cache</th></tr>
+    <tr><td>Max RAM</td><td>{{.MaxRAMMB}} MB</td></tr>
+    <tr><td>Chunk size</td><td>{{.ChunkSizeMB}} MB</td></tr>
+    <tr><td>TTL</td><td>{{.TTLSeconds}} s</td></tr>
+    <tr><td>Eviction strategy</td><td>{{.EvictionStrategy}}</td></tr>
+    <tr><td>CDN URL TTL</td><td>{{.CDNURLTTLMinutes}} min</td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="2">Throttle</th></tr>
+    <tr><td>Rate limit</td><td>{{.RequestsPerMinute}} req/min</td></tr>
+    <tr><td>Total API calls</td><td>{{.APICallsTotal}}</td></tr>
+    <tr><td>Calls last minute</td><td>{{.APICallsLastMinute}}</td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="2">Sync</th></tr>
+    <tr><td>Interval</td><td>{{.SyncIntervalMinutes}} min</td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="2">Logging</th></tr>
+    <tr><td>Format</td><td>{{.LogFormat}}</td></tr>
+    <tr><td>Level</td><td>{{.LogLevel}}</td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="2">Actions</th></tr>
+    <tr class="actions">
+      <td colspan="2">
+        <form method="post" action="/actions/resync" style="display:inline">
+          <input type="submit" value="Resync metadata" class="btn" />
+        </form>
+        <form method="post" action="/actions/clearcache" style="display:inline">
+          <input type="submit" value="Clear RAM cache" class="btn" />
+        </form>
+      </td>
+    </tr>
+  </table>
+
+  <div class="footer">
+    <a href="https://REDACTED/ben/warpbox">ben/warpbox</a>
+  </div>
+</div>
+</body>
+</html>
