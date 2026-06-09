@@ -7,6 +7,7 @@ package server
 
 import (
 	"context"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log/slog"
@@ -28,7 +29,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 	virtualPath = strings.TrimPrefix(virtualPath, "/")
 
 	if virtualPath == "" {
-		http.Error(w, "not found", http.StatusNotFound)
+		s.serveDirListing(w, r.URL.Path, "1")
 		return
 	}
 
@@ -42,6 +43,17 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if file == nil {
+		// Not a file — check if it's a virtual directory with children.
+		records, listErr := s.store.ListDir(virtualPath)
+		if listErr != nil {
+			slog.Error("GET: ListDir failed", "prefix", virtualPath, "error", listErr)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if len(records) > 0 {
+			s.serveDirListing(w, r.URL.Path, "1")
+			return
+		}
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
@@ -260,6 +272,7 @@ func (s *Server) handleHead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if file == nil {
+		// Not a file — head is for files only; return not found.
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
@@ -272,4 +285,85 @@ func (s *Server) handleHead(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.FormatInt(file.Size, 10))
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.WriteHeader(http.StatusOK)
+}
+
+// ---------------------------------------------------------------------------
+// Directory listing (WebDAV-style Multi-Status for GET on directory paths)
+// ---------------------------------------------------------------------------
+
+// serveDirListing responds to a GET request on a virtual directory path with
+// a WebDAV Multi-Status XML document listing the directory contents.
+// This matches the behaviour of zurg and other standards-compliant WebDAV servers
+// so that Chrome and other browsers render a browsable directory listing.
+func (s *Server) serveDirListing(w http.ResponseWriter, reqPath string, depth string) {
+	slog.Debug("directory listing", "path", reqPath, "depth", depth)
+
+	// Normalise the path.
+	normalised := strings.TrimRight(reqPath, "/")
+	if normalised == "" {
+		normalised = "/"
+	}
+
+	// Build the virtual prefix: strip the WebDAV root from the path.
+	prefix := strings.TrimPrefix(normalised, s.root)
+	prefix = strings.TrimPrefix(prefix, "/")
+
+	// List files from SQLite matching this prefix.
+	records, err := s.store.ListDir(prefix)
+	if err != nil {
+		slog.Error("directory listing: ListDir failed", "prefix", prefix, "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Build a set of virtual paths for the response.
+	seen := map[string]bool{}
+	var responses []response
+
+	// Always include the requested directory itself.
+	dirHref := normalised
+	if !strings.HasSuffix(dirHref, "/") {
+		dirHref += "/"
+	}
+	responses = appendResponse(responses, dirHref, true, 0, "", "", &seen)
+
+	// Add immediate children based on depth.
+	if depth == "1" || depth == "infinity" {
+		for _, rec := range records {
+			// Build the full WebDAV href for this file.
+			relPath := strings.TrimPrefix(rec.Path, prefix)
+			relPath = strings.TrimPrefix(relPath, "/")
+			childHref := strings.TrimRight(normalised, "/") + "/" + relPath
+
+			if !seen[childHref] {
+				// Determine MIME type; default to octet-stream for files.
+				mime := rec.MimeType
+				if mime == "" {
+					mime = "application/octet-stream"
+				}
+				responses = appendResponse(responses, childHref, false, rec.Size, rec.Name, mime, &seen)
+			}
+		}
+	}
+
+	// Build the XML response.
+	ms := multiStatus{
+		XmlnsD:    davNamespace,
+		Responses: responses,
+	}
+
+	output, err := xml.MarshalIndent(ms, "", "  ")
+	if err != nil {
+		slog.Error("directory listing: XML marshal failed", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Prepend XML declaration.
+	body := append([]byte(xml.Header), output...)
+
+	w.Header().Set("DAV", "1")
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.WriteHeader(http.StatusMultiStatus)
+	w.Write(body)
 }
