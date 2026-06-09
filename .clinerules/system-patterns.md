@@ -33,3 +33,14 @@ Plex/Jellyfin → rclone (FUSE mount) → WebDAV → Warpbox → TorBox API
 ## 6. Decision Tracking
 
 * Always consult decision-log.md before implementing complex logic to avoid repeating failed experiments. Whenever a significant architectural decision is made, a workaround is implemented, or an approach fails, you must immediately document the context, decision, and rationale in decision-log.md.
+
+## 7. Feature & Issue Tracking
+
+* All feature requests, bugs, enhancements, and documentation tasks are tracked
+  as Gitea Issues in the `ben/warpbox` repository.
+* The AI assistant uses the `gitea-mcp` server to create, read, update, and
+  search issues. Labels (`bug`, `enhancement`, `docs`, `infra`,
+  `priority:low/med/high`) and milestones keep the backlog organized.
+* Implementation commits reference issues (e.g., `fix: handle 401 expiry, closes #12`). The issue stays open until the fix is verified in deployment.
+* Before starting any non-trivial work, consult the issue tracker — not the
+  chat history — for context and priorities.
