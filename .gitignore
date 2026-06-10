@@ -1,6 +1,6 @@
 # Binaries
 warpbox.exe
-warpbox
+/warpbox
 *.exe
 *.test
 *.out

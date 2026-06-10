@@ -25,9 +25,6 @@ func TestLoadDefaults(t *testing.T) {
 	}
 
 	// Check defaults.
-	if cfg.TorBox.BaseURL != "https://api.torbox.app" {
-		t.Errorf("base_url = %q, want %q", cfg.TorBox.BaseURL, "https://api.torbox.app")
-	}
 	if cfg.Server.ListenAddr != ":1412" {
 		t.Errorf("listen_addr = %q, want %q", cfg.Server.ListenAddr, ":1412")
 	}
@@ -98,9 +95,6 @@ sync:
 
 	if cfg.TorBox.APIKey != "custom-key" {
 		t.Errorf("api_key = %q", cfg.TorBox.APIKey)
-	}
-	if cfg.TorBox.BaseURL != "https://custom.api/torbox" {
-		t.Errorf("base_url = %q", cfg.TorBox.BaseURL)
 	}
 	if cfg.Server.ListenAddr != "127.0.0.1:9000" {
 		t.Errorf("listen_addr = %q", cfg.Server.ListenAddr)

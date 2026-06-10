@@ -8,6 +8,12 @@ import (
 	"testing"
 )
 
+func newTestClient(serverURL, apiKey string) *Client {
+	c := NewClient(apiKey)
+	c.baseURL = serverURL
+	return c
+}
+
 func TestListFilesSuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -40,10 +46,10 @@ func TestListFilesSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key")
-	torrents, err := client.ListFiles(context.Background(), ListFilesParams{})
+	client := newTestClient(server.URL, "test-key")
+	torrents, err := client.ListTorrents(context.Background(), ListFilesParams{})
 	if err != nil {
-		t.Fatalf("ListFiles failed: %v", err)
+		t.Fatalf("ListTorrents failed: %v", err)
 	}
 	if len(torrents) != 1 {
 		t.Fatalf("expected 1 torrent, got %d", len(torrents))
@@ -63,8 +69,8 @@ func TestListFilesAuthError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "bad-key")
-	_, err := client.ListFiles(context.Background(), ListFilesParams{})
+	client := newTestClient(server.URL, "bad-key")
+	_, err := client.ListTorrents(context.Background(), ListFilesParams{})
 	if err == nil {
 		t.Fatal("expected error for 401, got nil")
 	}
@@ -77,8 +83,8 @@ func TestListFilesRateLimited(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "key")
-	_, err := client.ListFiles(context.Background(), ListFilesParams{})
+	client := newTestClient(server.URL, "key")
+	_, err := client.ListTorrents(context.Background(), ListFilesParams{})
 	if err == nil {
 		t.Fatal("expected error for 429, got nil")
 	}
@@ -90,8 +96,8 @@ func TestListFilesServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "key")
-	_, err := client.ListFiles(context.Background(), ListFilesParams{})
+	client := newTestClient(server.URL, "key")
+	_, err := client.ListTorrents(context.Background(), ListFilesParams{})
 	if err == nil {
 		t.Fatal("expected error for 500, got nil")
 	}
@@ -120,7 +126,7 @@ func TestGetDownloadURLSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key")
+	client := newTestClient(server.URL, "test-key")
 	url, err := client.GetDownloadURL(context.Background(), 42, 7, false)
 	if err != nil {
 		t.Fatalf("GetDownloadURL failed: %v", err)
@@ -216,22 +222,22 @@ func TestClientRecoversAfterErrors(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key")
+	client := newTestClient(server.URL, "test-key")
 
 	// First call should fail with 429.
-	_, err1 := client.ListFiles(context.Background(), ListFilesParams{})
+	_, err1 := client.ListTorrents(context.Background(), ListFilesParams{})
 	if err1 == nil {
 		t.Fatal("expected error on first call (429), got nil")
 	}
 
 	// Second call should also fail with 429.
-	_, err2 := client.ListFiles(context.Background(), ListFilesParams{})
+	_, err2 := client.ListTorrents(context.Background(), ListFilesParams{})
 	if err2 == nil {
 		t.Fatal("expected error on second call (429), got nil")
 	}
 
 	// Third call should succeed.
-	torrents, err3 := client.ListFiles(context.Background(), ListFilesParams{})
+	torrents, err3 := client.ListTorrents(context.Background(), ListFilesParams{})
 	if err3 != nil {
 		t.Fatalf("expected success on third call, got: %v", err3)
 	}
@@ -253,7 +259,7 @@ func TestGetDownloadURLEmpty(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "key")
+	client := newTestClient(server.URL, "key")
 	url, err := client.GetDownloadURL(context.Background(), 1, 1, false)
 	if err != nil {
 		t.Fatalf("GetDownloadURL failed: %v", err)
@@ -283,13 +289,13 @@ func TestListFilesWithParams(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "key")
-	_, err := client.ListFiles(context.Background(), ListFilesParams{
+	client := newTestClient(server.URL, "key")
+	_, err := client.ListTorrents(context.Background(), ListFilesParams{
 		BypassCache: true,
 		Offset:      10,
 		Limit:       50,
 	})
 	if err != nil {
-		t.Fatalf("ListFiles failed: %v", err)
+		t.Fatalf("ListTorrents failed: %v", err)
 	}
 }
