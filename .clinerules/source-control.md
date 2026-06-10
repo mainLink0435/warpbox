@@ -11,4 +11,4 @@
    - Take the highest version tag that has NO suffix (e.g. `v0.1.0`, not `v0.5.0-test`).
    - Increment from that tag: PATCH for bug fixes, MINOR for features, MAJOR for breaking changes.
    - Present the intended tag to the user for confirmation before pushing. Do not push version tags autonomously.
-7. **Issue Autoclose:** Gitea (v1.24.x) does **not** support auto-closing issues via commit message keywords like `Closes #N`, `Fixes #N`, or `Resolves #N`. After pushing a commit that resolves an issue, you MUST use the `gitea-mcp` `issue_write` tool (method: `update`, state: `closed`) to close the issue manually. Include the issue number in the commit message for documentation purposes, but do not rely on it closing automatically.
+7. **Issue Autoclose:** Gitea does **not** appear to support auto-closing issues via commit message keywords like `Closes #N`, `Fixes #N`, or `Resolves #N`. After pushing a commit that resolves an issue, you MUST use the `gitea-mcp` `issue_write` tool (method: `update`, state: `closed`) to close the issue manually. Include the issue number in the commit message for documentation purposes, but do not rely on it closing automatically.
