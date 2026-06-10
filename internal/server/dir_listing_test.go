@@ -146,6 +146,106 @@ func readAllStr(r io.ReadCloser) string {
 	return string(b)
 }
 
+func TestServeDirListingNestedPaths(t *testing.T) {
+	// Test that PROPFIND with depth=1 on a directory containing files
+	// with nested paths returns only immediate children, not deeply nested entries.
+	store, err := metadata.Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory store: %v", err)
+	}
+	defer store.Close()
+
+	// Simulate the real-world scenario from issue #37:
+	// Torrent "The.Studio.2025.S01.MULTi.1080p.WEB.H265-FW" contains files with
+	// paths like "The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW/The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.mkv"
+	// This creates a nested structure: TorrentName/SubDir/File.ext
+	files := []metadata.FileRecord{
+		// A torrent with nested subdirectories (the common case from the bug report)
+		{TorrentID: 1, FileID: 10, Name: "The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.mkv",
+			Path: "The.Studio.2025.S01.MULTi.1080p.WEB.H265-FW/The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW/The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.mkv",
+			Size: 1000, MimeType: "video/x-matroska"},
+		{TorrentID: 1, FileID: 11, Name: "The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.nfo",
+			Path: "The.Studio.2025.S01.MULTi.1080p.WEB.H265-FW/The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW/The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.nfo",
+			Size: 500, MimeType: "text/plain"},
+		// A torrent where files are directly at the root (normal case)
+		{TorrentID: 2, FileID: 20, Name: "movie.mkv",
+			Path: "Simple.Movie/movie.mkv",
+			Size: 2000, MimeType: "video/x-matroska"},
+	}
+	for _, f := range files {
+		if err := store.UpsertFile(f); err != nil {
+			t.Fatalf("failed to upsert file: %v", err)
+		}
+	}
+
+	srv := New(Config{WebDAVRoot: "/webdav", Version: "test"}, store, nil, nil, nil)
+
+	// --- Test 1: Listing the root should show only the torrent directories ---
+	req := httptest.NewRequest(http.MethodGet, "/webdav/", nil)
+	w := httptest.NewRecorder()
+	srv.handleGet(w, req)
+
+	resp := w.Result()
+	body := readAllStr(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusMultiStatus {
+		t.Errorf("expected 207 Multi-Status, got %d", resp.StatusCode)
+	}
+
+	// Should NOT contain deeply nested paths as direct children
+	if strings.Contains(body, "The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.mkv") {
+		t.Error("root listing should NOT contain deeply nested file; only the torrent directory")
+	}
+	if strings.Contains(body, "Simple.Movie/movie.mkv") {
+		t.Error("root listing should NOT contain child file paths with slash")
+	}
+
+	// Should only contain the torrent names as directory entries
+	if !strings.Contains(body, "<D:href>/webdav/The.Studio.2025.S01.MULTi.1080p.WEB.H265-FW/</D:href>") {
+		t.Error("root listing should contain the nested torrent as a directory entry")
+	}
+	if !strings.Contains(body, "<D:href>/webdav/Simple.Movie/</D:href>") {
+		t.Error("root listing should contain Simple.Movie as a directory entry")
+	}
+
+	// --- Test 2: Listing the Simple.Movie directory should show the file directly ---
+	req2 := httptest.NewRequest(http.MethodGet, "/webdav/Simple.Movie/", nil)
+	w2 := httptest.NewRecorder()
+	srv.handleGet(w2, req2)
+
+	resp2 := w2.Result()
+	body2 := readAllStr(resp2.Body)
+	resp2.Body.Close()
+
+	if !strings.Contains(body2, "<D:href>/webdav/Simple.Movie/movie.mkv</D:href>") {
+		t.Error("Simple.Movie listing should contain movie.mkv directly")
+	}
+
+	// --- Test 3: Listing the nested torrent directory should show the subdirectory, not the file ---
+	req3 := httptest.NewRequest(http.MethodGet, "/webdav/The.Studio.2025.S01.MULTi.1080p.WEB.H265-FW/", nil)
+	w3 := httptest.NewRecorder()
+	srv.handleGet(w3, req3)
+
+	resp3 := w3.Result()
+	body3 := readAllStr(resp3.Body)
+	resp3.Body.Close()
+
+	// Should contain the subdirectory entry (with trailing slash)
+	if !strings.Contains(body3, "<D:href>/webdav/The.Studio.2025.S01.MULTi.1080p.WEB.H265-FW/The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW/</D:href>") {
+		t.Error("nested torrent listing should contain subdirectory, not deeply nested file")
+	}
+	// Should NOT contain the deeply nested file directly in this listing
+	if strings.Contains(body3, "The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.mkv") {
+		t.Error("nested torrent listing should NOT contain the file directly; only the subdirectory")
+	}
+
+	// Should have a <D:collection> for the subdirectory
+	if !strings.Contains(body3, "<D:collection>") {
+		t.Error("subdirectory should have a collection resource type")
+	}
+}
+
 func TestServeDirListingGETRootNoSlash(t *testing.T) {
 	store, err := metadata.Open(":memory:")
 	if err != nil {

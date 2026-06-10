@@ -90,19 +90,56 @@ func (s *Server) handlePropfind(w http.ResponseWriter, r *http.Request) {
 
 	// Add immediate children based on depth.
 	if depth == "1" || depth == "infinity" {
+		// Track immediate children of the requested directory.
+		// For each file path, we extract the first path segment after the prefix.
+		// If there are more segments after that, the immediate child is a directory.
+		// If the file is directly in the requested directory, it's a file.
+		type childInfo struct {
+			isDir bool
+			size  int64
+			name  string
+			mime  string
+		}
+		immediate := map[string]childInfo{}
+
 		for _, rec := range records {
-			// Build the full WebDAV href for this file.
 			relPath := strings.TrimPrefix(rec.Path, prefix)
 			relPath = strings.TrimPrefix(relPath, "/")
-			childHref := strings.TrimRight(reqPath, "/") + "/" + relPath
 
-			if !seen[childHref] {
-				// Determine MIME type; default to octet-stream for files.
+			parts := strings.SplitN(relPath, "/", 2)
+			immediateName := parts[0]
+
+			if _, exists := immediate[immediateName]; exists {
+				continue
+			}
+
+			if len(parts) > 1 {
+				// The file is nested deeper — the immediate child is a directory.
+				immediate[immediateName] = childInfo{isDir: true}
+			} else {
+				// Direct file in the requested directory.
 				mime := rec.MimeType
 				if mime == "" {
 					mime = "application/octet-stream"
 				}
-				responses = appendResponse(responses, childHref, false, rec.Size, rec.Name, mime, &seen)
+				immediate[immediateName] = childInfo{
+					isDir: false,
+					size:  rec.Size,
+					name:  rec.Name,
+					mime:  mime,
+				}
+			}
+		}
+
+		// Build response entries from the immediate children map.
+		baseHref := strings.TrimRight(reqPath, "/") + "/"
+		for name, info := range immediate {
+			childHref := baseHref + name
+			if info.isDir {
+				childHref += "/"
+				responses = appendResponse(responses, childHref, true, 0, "", "", &seen)
+			} else {
+				responses = appendResponse(responses, childHref, false, info.size, info.name, info.mime, &seen)
 			}
 		}
 	}
