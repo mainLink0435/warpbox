@@ -224,7 +224,15 @@ func TestLoadInvalidEvictionStrategy(t *testing.T) {
 }
 
 func TestGenerateTemplateCreatesFile(t *testing.T) {
-	tmp := t.TempDir() + "/config.yml"
+	dir := t.TempDir()
+
+	// GenerateTemplate now reads config.yml.example from beside the target path.
+	example := dir + "/config.yml.example"
+	if err := os.WriteFile(example, []byte("torbox:\n  api_key: \"YOUR_API_KEY_HERE\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tmp := dir + "/config.yml"
 	created, err := GenerateTemplate(tmp)
 	if err != nil {
 		t.Fatalf("GenerateTemplate failed: %v", err)

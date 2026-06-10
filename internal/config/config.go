@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -144,59 +145,10 @@ func ParseLevel(s string) (slog.Level, error) {
 	}
 }
 
-// defaultConfigYAML returns a minimal config file with all defaults documented
-// and a placeholder for the required API key.
-const defaultConfigYAML = `# Warpbox Configuration
-# Auto-generated on first run. Fill in your TorBox API key below.
-
-# ---------------------------------------------------------------------------
-# TorBox API Connection
-# ---------------------------------------------------------------------------
-torbox:
-  # Your TorBox API key (required).
-  api_key: "YOUR_API_KEY_HERE"
-
-# ---------------------------------------------------------------------------
-# WebDAV Server Settings
-# ---------------------------------------------------------------------------
-server:
-  listen_addr: ":1412"
-  webdav_root: "/webdav"
-
-# ---------------------------------------------------------------------------
-# JIT RAM Cache
-# ---------------------------------------------------------------------------
-cache:
-  chunk_size_mb: 16
-  max_ram_mb: 512
-  ttl_seconds: 30
-  eviction_strategy: "ttl"
-  cdn_url_ttl_minutes: 120
-  cdn_url_auto_repair: true
-  cdn_url_repair_retries: 2
-
-# ---------------------------------------------------------------------------
-# Rate Limiting
-# ---------------------------------------------------------------------------
-throttle:
-  requests_per_minute: 250
-
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
-logging:
-  format: "text"
-  level: "info"
-
-# ---------------------------------------------------------------------------
-# Metadata Sync
-# ---------------------------------------------------------------------------
-sync:
-  interval_minutes: 5
-`
-
 // GenerateTemplate writes a default config.yml to the given path if the
-// file does not already exist. Returns true if a new file was created.
+// file does not already exist. The template content is read from
+// "config.yml.example" in the same directory as the target path.
+// Returns true if a new file was created.
 func GenerateTemplate(path string) (bool, error) {
 	if _, err := os.Stat(path); err == nil {
 		return false, nil // file already exists
@@ -204,7 +156,14 @@ func GenerateTemplate(path string) (bool, error) {
 		return false, fmt.Errorf("checking config file: %w", err)
 	}
 
-	if err := os.WriteFile(path, []byte(defaultConfigYAML), 0644); err != nil {
+	// Read the example template from beside the target path.
+	examplePath := filepath.Join(filepath.Dir(path), "config.yml.example")
+	template, err := os.ReadFile(examplePath)
+	if err != nil {
+		return false, fmt.Errorf("reading example config from %s: %w", examplePath, err)
+	}
+
+	if err := os.WriteFile(path, template, 0644); err != nil {
 		return false, fmt.Errorf("writing default config: %w", err)
 	}
 	return true, nil
