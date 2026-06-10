@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ben/warpbox/internal/metadata"
 	"github.com/ben/warpbox/internal/throttle"
 )
 
@@ -69,20 +68,10 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 
 	if cdnURL == "" {
 		// No cached CDN URL — fetch one via the throttle queue.
-		cdnURL, err = s.fetchCDNURL(file.Source, file.ItemID, file.FileID)
+		cdnURL, err = s.fetchCDNURL(file.TorrentID, file.FileID)
 		if err != nil {
-			// CDN is temporarily unavailable. Instead of returning an error (which
-			// rclone counts toward maxErrorCount=10, causing Plex to trash the file),
-			// send success headers immediately and hold the connection while polling
-			// for the CDN URL. This looks like a slow spinning disk to Plex.
-			slog.Warn("GET: CDN URL unavailable, entering hang/poll mode",
-				"path", virtualPath,
-				"source", file.Source,
-				"item_id", file.ItemID,
-				"file_id", file.FileID,
-				"error", err,
-			)
-			s.handleGetCDNHang(w, r, file)
+			slog.Error("GET: failed to get CDN URL", "torrent_id", file.TorrentID, "file_id", file.FileID, "error", err)
+			http.Error(w, "Failed to get download URL", http.StatusBadGateway)
 			return
 		}
 
@@ -165,7 +154,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 				"status", proxyResp.StatusCode,
 			)
 
-			newURL, refreshErr := s.fetchCDNURL(file.Source, file.ItemID, file.FileID)
+			newURL, refreshErr := s.fetchCDNURL(file.TorrentID, file.FileID)
 			if refreshErr != nil {
 				slog.Error("GET: CDN URL refresh failed",
 					"path", file.Path,
@@ -228,330 +217,30 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------------------------------------------------------------------------
-// CDN URL helpers — retry, backoff, negative cache, circuit breaker
+// CDN URL helpers
 // ---------------------------------------------------------------------------
 
-// cdnCacheKey builds a map key from source, item_id, and file_id.
-func cdnCacheKey(source metadata.FileSource, itemID, fileID int64) string {
-	src := "torrent"
-	if source == metadata.SourceUsenet {
-		src = "usenet"
-	}
-	return fmt.Sprintf("%s:%d:%d", src, itemID, fileID)
-}
-
-// isTorrentStale checks whether a torrent has been marked stale by the circuit
-// breaker. Stale torrents skip API calls entirely.
-func (s *Server) isTorrentStale(itemID int64) bool {
-	s.torrentFailuresMu.Lock()
-	defer s.torrentFailuresMu.Unlock()
-
-	tracker, exists := s.torrentFailures[itemID]
-	if !exists {
-		return false
-	}
-	if time.Now().Before(tracker.staleUntil) {
-		slog.Warn("circuit breaker: item marked stale, skipping CDN URL fetch",
-			"item_id", itemID,
-			"stale_until", tracker.staleUntil.Format(time.RFC3339),
-		)
-		return true
-	}
-	// Stale period expired — remove the tracker so we try again.
-	delete(s.torrentFailures, itemID)
-	slog.Info("circuit breaker: item stale period expired, will retry",
-		"item_id", itemID,
-	)
-	return false
-}
-
-// recordTorrentFailure records a failure for the given item (torrent or usenet).
-// If the failure count exceeds cfg.CircuitBreakerFailures within
-// cfg.CircuitBreakerWindowSec, the item is marked stale for
-// cfg.CircuitBreakerStaleMin minutes.
-func (s *Server) recordTorrentFailure(itemID int64) {
-	s.torrentFailuresMu.Lock()
-	defer s.torrentFailuresMu.Unlock()
-
-	now := time.Now()
-	tracker, exists := s.torrentFailures[itemID]
-	if !exists {
-		tracker = &torrentFailureTracker{}
-		s.torrentFailures[itemID] = tracker
-	}
-
-	// Prune failures outside the sliding window.
-	window := time.Duration(s.cfg.CircuitBreakerWindowSec) * time.Second
-	cutoff := now.Add(-window)
-	var active []time.Time
-	for _, t := range tracker.failures {
-		if t.After(cutoff) {
-			active = append(active, t)
-		}
-	}
-	active = append(active, now)
-	tracker.failures = active
-
-	if len(active) >= s.cfg.CircuitBreakerFailures {
-		staleDur := time.Duration(s.cfg.CircuitBreakerStaleMin) * time.Minute
-		tracker.staleUntil = now.Add(staleDur)
-		slog.Warn("circuit breaker: item exceeded failure threshold, marking stale",
-			"item_id", itemID,
-			"failures", len(active),
-			"window_seconds", window.Seconds(),
-			"threshold", s.cfg.CircuitBreakerFailures,
-			"stale_duration_minutes", s.cfg.CircuitBreakerStaleMin,
-			"stale_until", tracker.staleUntil.Format(time.RFC3339),
-		)
-	}
-}
-
-// getCDNURLWithRetry enqueues a TorBox requestdl call through the throttle
-// queue and returns the fresh CDN URL. Routes to the torrent or usenet
-// endpoint based on source. On failure it retries with exponential backoff
-// (cfg.CDNURLRetryBackoff * 1s, * 2s, * 4s, etc.) for up to
-// cfg.CDNURLRetryCount attempts. 429 responses use a 5s backoff instead.
-func (s *Server) getCDNURLWithRetry(source metadata.FileSource, itemID, fileID int64) (string, error) {
-	maxRetries := s.cfg.CDNURLRetryCount
-	baseBackoff := time.Duration(s.cfg.CDNURLRetryBackoff) * time.Second
-
+// fetchCDNURL enqueues a GetDownloadURL call through the throttle queue and
+// returns the fresh CDN URL. All retries from auto-repair go through this
+// same queue, so they count towards the total API call rate.
+func (s *Server) fetchCDNURL(torrentID, fileID int64) (string, error) {
 	type result struct {
 		url string
 		err error
 	}
+	resCh := make(chan result, 1)
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		resCh := make(chan result, 1)
+	s.queue.Enqueue(throttle.Request{
+		Label: fmt.Sprintf("fetch CDN URL for file %d", fileID),
+		Execute: func(ctx context.Context) error {
+			url, err := s.torBox.GetDownloadURL(ctx, torrentID, fileID, false)
+			resCh <- result{url, err}
+			return err
+		},
+	})
 
-		s.queue.Enqueue(throttle.Request{
-			Label: fmt.Sprintf("fetch CDN URL for file %d (attempt %d/%d)", fileID, attempt+1, maxRetries+1),
-			Execute: func(ctx context.Context) error {
-				var url string
-				var err error
-				if source == metadata.SourceUsenet {
-					url, err = s.torBox.GetUsenetDownloadURL(ctx, itemID, fileID, false)
-				} else {
-					url, err = s.torBox.GetDownloadURL(ctx, itemID, fileID, false)
-				}
-				resCh <- result{url, err}
-				return err
-			},
-		})
-
-		res := <-resCh
-
-		if res.err == nil {
-			return res.url, nil
-		}
-
-		// Check if the error is retryable. 429 and 5xx are retryable.
-		errStr := res.err.Error()
-		isRetryable := strings.Contains(errStr, "unexpected status 429") ||
-			strings.Contains(errStr, "unexpected status 5")
-
-		if !isRetryable || attempt >= maxRetries {
-			// Non-retryable or out of attempts — record and return.
-			s.recordTorrentFailure(itemID)
-			slog.Warn("CDN URL fetch failed, non-retryable or exhausted",
-				"item_id", itemID,
-				"file_id", fileID,
-				"source", source,
-				"attempt", attempt+1,
-				"max_attempts", maxRetries+1,
-				"retry_backoff_base", s.cfg.CDNURLRetryBackoff,
-				"error", res.err,
-			)
-			return "", res.err
-		}
-
-		// Exponential backoff: base * 2^attempt
-		wait := baseBackoff * (1 << attempt)
-		// 429 rate-limit errors get a long 30s backoff. Once TorBox rate-limits,
-		// we need to give it breathing room rather than retrying aggressively.
-		if strings.Contains(errStr, "unexpected status 429") {
-			wait = 30 * time.Second
-		}
-		slog.Warn("CDN URL fetch failed, retrying with backoff",
-			"item_id", itemID,
-			"file_id", fileID,
-			"source", source,
-			"attempt", attempt+1,
-			"max_attempts", maxRetries+1,
-			"backoff_seconds", wait.Seconds(),
-			"error", res.err,
-		)
-		time.Sleep(wait)
-	}
-
-	return "", fmt.Errorf("torbox: CDN URL fetch exhausted after %d retries", maxRetries)
-}
-
-// fetchCDNURL is the public entry point for handleGet to obtain a CDN URL.
-// It checks the negative cache and circuit breaker before making any API calls.
-func (s *Server) fetchCDNURL(source metadata.FileSource, itemID, fileID int64) (string, error) {
-	key := cdnCacheKey(source, itemID, fileID)
-
-	// 1. Check negative cache for a recent failure on this exact file.
-	s.negativeCacheMu.Lock()
-	entry, found := s.negativeCache[key]
-	if found {
-		if time.Now().Before(entry.expiresAt) {
-			s.negativeCacheMu.Unlock()
-			slog.Debug("negative cache hit, skipping CDN URL fetch",
-				"source", source,
-				"item_id", itemID,
-				"file_id", fileID,
-				"error", entry.err,
-			)
-			return "", entry.err
-		}
-		// Expired — clean up.
-		delete(s.negativeCache, key)
-	}
-	s.negativeCacheMu.Unlock()
-
-	// 2. Check circuit breaker for this item.
-	if s.isTorrentStale(itemID) {
-		return "", fmt.Errorf("item %d is marked stale by circuit breaker", itemID)
-	}
-
-	// 3. Attempt the API call with retry.
-	cdnURL, err := s.getCDNURLWithRetry(source, itemID, fileID)
-	if err != nil {
-		// Cache the error in the negative cache so subsequent requests for the
-		// same file fail fast without hitting the API.
-		ttl := time.Duration(s.cfg.NegativeCacheTTLSeconds) * time.Second
-		s.negativeCacheMu.Lock()
-		s.negativeCache[key] = &negativeCacheEntry{
-			err:       err,
-			expiresAt: time.Now().Add(ttl),
-		}
-		s.negativeCacheMu.Unlock()
-		return "", err
-	}
-
-	return cdnURL, nil
-}
-
-// cdnPollInterval is how long to wait between CDN URL fetch attempts when
-// the CDN is unavailable and we are hanging the connection open.
-const cdnPollInterval = 15 * time.Second
-
-// handleGetCDNHang is entered when the CDN URL cannot be fetched and we want
-// to avoid returning an error (which rclone counts toward maxErrorCount=10).
-//
-// It sends success HTTP headers immediately, then polls fetchCDNURL every
-// cdnPollInterval until the CDN recovers. Once a URL is obtained, it proxies
-// the file data from the CDN transparently.
-//
-// If the client disconnects (context cancelled), we clean up and exit.
-// If rclone's --timeout (default 5m) fires, the connection drops and rclone
-// counts one error, but at 1 per 5 minutes it would take 50+ to hit
-// maxErrorCount=10.
-func (s *Server) handleGetCDNHang(w http.ResponseWriter, r *http.Request, file *metadata.FileRecord) {
-	// Parse the byte range, if present.
-	rangeHeader := r.Header.Get("Range")
-	var srvRange *httpRange
-	var hasRange bool
-	if rangeHeader != "" {
-		var parseErr error
-		srvRange, parseErr = parseRange(rangeHeader, file.Size)
-		if parseErr != nil {
-			slog.Error("GET (hang): invalid range", "range", rangeHeader, "path", file.Path, "error", parseErr)
-			http.Error(w, "Invalid range", http.StatusRequestedRangeNotSatisfiable)
-			return
-		}
-		hasRange = true
-	} else {
-		// Synthesize a full-file range.
-		srvRange = &httpRange{
-			Start:  0,
-			End:    file.Size - 1,
-			Length: file.Size,
-		}
-	}
-
-	mime := file.MimeType
-	if mime == "" {
-		mime = "application/octet-stream"
-	}
-
-	// Send success headers immediately so rclone sees a successful connection.
-	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Content-Length", strconv.FormatInt(srvRange.Length, 10))
-	w.Header().Set("Accept-Ranges", "bytes")
-	if hasRange {
-		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", srvRange.Start, srvRange.End, file.Size))
-		w.WriteHeader(http.StatusPartialContent)
-	} else {
-		w.WriteHeader(http.StatusOK)
-	}
-
-	// Check if the headers were written successfully. If the client already
-	// disconnected, the WriteHeader might have failed silently. We'll detect
-	// this via the context on the first poll iteration.
-
-	// Poll for CDN URL.
-	ticker := time.NewTicker(cdnPollInterval)
-	defer ticker.Stop()
-
-	var cdnURL string
-	for {
-		var fetchErr error
-		cdnURL, fetchErr = s.fetchCDNURL(file.Source, file.ItemID, file.FileID)
-		if fetchErr == nil {
-			slog.Info("CDN URL recovered, proxying data",
-				"path", file.Path,
-				"source", file.Source,
-				"item_id", file.ItemID,
-				"file_id", file.FileID,
-			)
-			break
-		}
-
-		select {
-		case <-r.Context().Done():
-			slog.Debug("client disconnected while waiting for CDN",
-				"path", file.Path,
-			)
-			return
-		case <-ticker.C:
-			// Continue polling.
-		}
-	}
-
-	// Cache the recovered CDN URL.
-	if s.cfg.CDNTtlMinutes > 0 {
-		expiry := time.Now().Add(time.Duration(s.cfg.CDNTtlMinutes) * time.Minute)
-		if err := s.store.SetCDNURL(file.ID, cdnURL, expiry); err != nil {
-			slog.Error("GET (hang): failed to cache CDN URL after recovery", "path", file.Path, "error", err)
-		}
-	}
-
-	// Proxy the data from CDN.
-	proxyClient := &http.Client{Timeout: 30 * time.Second}
-	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodGet, cdnURL, http.NoBody)
-	if err != nil {
-		slog.Error("GET (hang): failed to create CDN proxy request", "path", file.Path, "error", err)
-		// Headers already sent — connection will just close.
-		return
-	}
-	proxyReq.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", srvRange.Start, srvRange.End))
-
-	proxyResp, err := proxyClient.Do(proxyReq)
-	if err != nil {
-		slog.Error("GET (hang): CDN proxy request failed", "path", file.Path, "error", err)
-		return
-	}
-	defer proxyResp.Body.Close()
-
-	// Copy the CDN response body directly to the client.
-	written, err := io.Copy(w, proxyResp.Body)
-	if err != nil {
-		slog.Error("GET (hang): error streaming CDN data", "path", file.Path, "written", written, "error", err)
-	}
-
-	slog.Debug("GET (hang): finished streaming", "path", file.Path, "bytes", written)
+	res := <-resCh
+	return res.url, res.err
 }
 
 // ---------------------------------------------------------------------------

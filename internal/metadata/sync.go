@@ -176,6 +176,14 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 		all = append(all, usenetRes.usenet...)
 	}
 
+	// Reserve a sync batch tag so we can prune stale records later.
+	// This tag is atomically incremented and stored in the meta table.
+	syncTag, err := w.store.GetNextSyncTag()
+	if err != nil {
+		slog.Error("metadata sync: failed to get sync tag", "error", err)
+		return
+	}
+
 	// Flatten all items into file records.
 	var count int
 	for _, t := range all {
@@ -221,6 +229,7 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 				Size:      f.Size,
 				MimeType:  f.MimeType,
 				CreatedAt: t.CreatedAt,
+				SyncTag:   syncTag,
 			}
 			if err := w.store.UpsertFile(rec); err != nil {
 				slog.Error("metadata sync: upsert failed",
@@ -244,6 +253,19 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 	w.lastError = syncErr
 	if syncErr == nil {
 		w.lastSuccess = time.Now()
+	}
+
+	// Prune stale records using the sync tag. Records with sync_tag != the
+	// current tag were not touched by this sync and are safe to remove.
+	// We always prune, even on partial fetch failure, to avoid accumulating
+	// orphaned entries for torrents that have been removed from the account.
+	if syncTag > 0 && count > 0 {
+		deleted, pruneErr := w.store.PruneBySyncTag(syncTag)
+		if pruneErr != nil {
+			slog.Error("metadata sync: prune failed", "error", pruneErr)
+		} else if deleted > 0 {
+			slog.Info("metadata sync: pruned stale records", "count", deleted)
+		}
 	}
 
 	slog.Debug("metadata sync complete", "files_synced", count)

@@ -38,7 +38,9 @@ type Server struct {
 type Config struct {
 	ListenAddr         string
 	WebDAVRoot         string
-	CDNTtlMinutes      int    // How long to cache CDN URLs (0 = disable)
+	CDNTtlMinutes       int  // How long to cache CDN URLs (0 = disable)
+	CDNURLAutoRepair    bool // Auto-repair stale CDN URLs by re-fetching from TorBox
+	CDNURLRepairRetries int  // Max repair retries per request (0 = no retries)
 	Version            string // Build version, injected at compile time
 	MaxRAMMB           int    // For landing page display
 	ChunkSizeMB        int    // For landing page display

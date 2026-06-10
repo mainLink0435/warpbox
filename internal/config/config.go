@@ -23,11 +23,13 @@ type ServerConfig struct {
 
 // CacheConfig holds JIT RAM buffering parameters.
 type CacheConfig struct {
-	ChunkSizeMB      int    `yaml:"chunk_size_mb"`      // Default: 16
-	MaxRAMMB         int    `yaml:"max_ram_mb"`         // Default: 512
-	TTLSeconds       int    `yaml:"ttl_seconds"`        // Default: 30
-	EvictionStrategy string `yaml:"eviction_strategy"`  // "ttl" or "lru"; default: "ttl"
-	CDNURLTTLMinutes int    `yaml:"cdn_url_ttl_minutes"` // How long to cache CDN URLs; default: 120
+	ChunkSizeMB        int    `yaml:"chunk_size_mb"`         // Default: 16
+	MaxRAMMB           int    `yaml:"max_ram_mb"`            // Default: 512
+	TTLSeconds         int    `yaml:"ttl_seconds"`           // Default: 30
+	EvictionStrategy   string `yaml:"eviction_strategy"`     // "ttl" or "lru"; default: "ttl"
+	CDNURLTTLMinutes   int    `yaml:"cdn_url_ttl_minutes"`   // How long to cache CDN URLs; default: 120
+	CDNURLAutoRepair   *bool  `yaml:"cdn_url_auto_repair"`   // Auto-repair stale CDN URLs; nil→default true
+	CDNURLRepairRetries *int  `yaml:"cdn_url_repair_retries"` // Max repair retries per request; nil→default 2
 }
 
 // ThrottleConfig holds rate-limiting settings.
@@ -95,6 +97,14 @@ func setDefaults(c *Config) {
 	if c.Sync.Limit == 0 {
 		c.Sync.Limit = 5000
 	}
+	if c.Cache.CDNURLAutoRepair == nil {
+		t := true
+		c.Cache.CDNURLAutoRepair = &t
+	}
+	if c.Cache.CDNURLRepairRetries == nil {
+		n := 2
+		c.Cache.CDNURLRepairRetries = &n
+	}
 }
 
 // validate checks that required fields are present.
@@ -107,6 +117,12 @@ func validate(c *Config) error {
 	}
 	if _, err := ParseLevel(c.Logging.Level); err != nil {
 		return fmt.Errorf("logging.level: %w", err)
+	}
+	if c.Cache.CDNURLRepairRetries != nil {
+		r := *c.Cache.CDNURLRepairRetries
+		if r < 0 || r > 10 {
+			return fmt.Errorf("cache.cdn_url_repair_retries must be 0–10, got %d", r)
+		}
 	}
 	return nil
 }
@@ -156,6 +172,8 @@ cache:
   ttl_seconds: 30
   eviction_strategy: "ttl"
   cdn_url_ttl_minutes: 120
+  cdn_url_auto_repair: true
+  cdn_url_repair_retries: 2
 
 # ---------------------------------------------------------------------------
 # Rate Limiting

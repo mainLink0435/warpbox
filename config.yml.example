@@ -66,6 +66,20 @@ cache:
   # Optional. Default: 120. Valid range: 0–1440.
   cdn_url_ttl_minutes: 120
 
+  # Enable automatic repair of stale CDN download URLs.
+  # When the CDN returns 403/404, Warpbox silently fetches a fresh URL
+  # from TorBox (via the throttle queue) and retries the request. This
+  # prevents broken files in Plex/Jellyfin when URLs expire within the
+  # cache window.
+  # Optional. Default: true.
+  cdn_url_auto_repair: true
+
+  # Maximum number of CDN URL repair attempts per request before giving up.
+  # Each attempt makes a rate-limited TorBox API call, so keep this low.
+  # Set to 0 to disable retries regardless of cdn_url_auto_repair.
+  # Optional. Default: 2. Valid range: 0–10.
+  cdn_url_repair_retries: 2
+
 # ---------------------------------------------------------------------------
 # Rate-Limiting / Throttle
 # ---------------------------------------------------------------------------
