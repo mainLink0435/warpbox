@@ -128,6 +128,74 @@ func ParseLevel(s string) (slog.Level, error) {
 	}
 }
 
+// defaultConfigYAML returns a minimal config file with all defaults documented
+// and a placeholder for the required API key.
+const defaultConfigYAML = `# Warpbox Configuration
+# Auto-generated on first run. Fill in your TorBox API key below.
+
+# ---------------------------------------------------------------------------
+# TorBox API Connection
+# ---------------------------------------------------------------------------
+torbox:
+  # Your TorBox API key (required).
+  api_key: "YOUR_API_KEY_HERE"
+
+  # Base URL for the TorBox API.
+  # Optional. Default: "https://api.torbox.app/v1"
+  base_url: "https://api.torbox.app/v1"
+
+# ---------------------------------------------------------------------------
+# WebDAV Server Settings
+# ---------------------------------------------------------------------------
+server:
+  listen_addr: ":1412"
+  webdav_root: "/webdav"
+
+# ---------------------------------------------------------------------------
+# JIT RAM Cache
+# ---------------------------------------------------------------------------
+cache:
+  chunk_size_mb: 16
+  max_ram_mb: 512
+  ttl_seconds: 30
+  eviction_strategy: "ttl"
+  cdn_url_ttl_minutes: 120
+
+# ---------------------------------------------------------------------------
+# Rate Limiting
+# ---------------------------------------------------------------------------
+throttle:
+  requests_per_minute: 250
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging:
+  format: "text"
+  level: "info"
+
+# ---------------------------------------------------------------------------
+# Metadata Sync
+# ---------------------------------------------------------------------------
+sync:
+  interval_minutes: 5
+`
+
+// GenerateTemplate writes a default config.yml to the given path if the
+// file does not already exist. Returns true if a new file was created.
+func GenerateTemplate(path string) (bool, error) {
+	if _, err := os.Stat(path); err == nil {
+		return false, nil // file already exists
+	} else if !os.IsNotExist(err) {
+		return false, fmt.Errorf("checking config file: %w", err)
+	}
+
+	if err := os.WriteFile(path, []byte(defaultConfigYAML), 0644); err != nil {
+		return false, fmt.Errorf("writing default config: %w", err)
+	}
+	return true, nil
+}
+
 // Load reads and parses the YAML config file at the given path.
 // It applies defaults for any missing optional fields.
 func Load(path string) (*Config, error) {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -225,5 +226,56 @@ func TestLoadInvalidEvictionStrategy(t *testing.T) {
 	_, err := Load(tmp)
 	if err == nil {
 		t.Fatal("expected error for invalid eviction_strategy, got nil")
+	}
+}
+
+func TestGenerateTemplateCreatesFile(t *testing.T) {
+	tmp := t.TempDir() + "/config.yml"
+	created, err := GenerateTemplate(tmp)
+	if err != nil {
+		t.Fatalf("GenerateTemplate failed: %v", err)
+	}
+	if !created {
+		t.Fatal("expected created=true for new file")
+	}
+
+	// Verify the file exists and is non-empty.
+	info, err := os.Stat(tmp)
+	if err != nil {
+		t.Fatalf("stat failed: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Fatal("generated config is empty")
+	}
+
+	// Verify it contains the placeholder.
+	data, err := os.ReadFile(tmp)
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if !strings.Contains(string(data), "YOUR_API_KEY_HERE") {
+		t.Error("generated config should contain the API key placeholder")
+	}
+}
+
+func TestGenerateTemplateExistingFile(t *testing.T) {
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, []byte("existing"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := GenerateTemplate(tmp)
+	if err != nil {
+		t.Fatalf("GenerateTemplate failed: %v", err)
+	}
+	if created {
+		t.Fatal("expected created=false for existing file")
+	}
+}
+
+func TestGenerateTemplateBadPath(t *testing.T) {
+	_, err := GenerateTemplate("/nonexistent/dir/config.yml")
+	if err == nil {
+		t.Fatal("expected error for bad path")
 	}
 }

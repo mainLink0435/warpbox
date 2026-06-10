@@ -46,6 +46,15 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})))
 
 	// --- Configuration ---
+	// Auto-generate a default config if the file doesn't exist.
+	if created, err := config.GenerateTemplate(*configPath); err != nil {
+		slog.Error("failed to generate default config", "error", err)
+		os.Exit(1)
+	} else if created {
+		slog.Warn("default config generated — edit it to add your TorBox API key, then restart", "path", *configPath)
+		os.Exit(0)
+	}
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
