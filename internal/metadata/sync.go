@@ -9,12 +9,17 @@ import (
 	"context"
 	"log/slog"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/ben/warpbox/internal/throttle"
 	"github.com/ben/warpbox/internal/torbox"
 )
+
+// sha1Hash matches a bare SHA1 hash used as a torrent name when the user
+// added the torrent via magnet link with no display name.
+var sha1Hash = regexp.MustCompile(`^[a-f0-9]{40}$`)
 
 // SyncWorker periodically synchronises the TorBox file listing into SQLite.
 type SyncWorker struct {
@@ -112,9 +117,17 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 		// Strip the ☐ (U+1F4C4) prefix that TorBox prepends to all torrent names.
 		torrentName := strings.TrimPrefix(t.Name, "\U0001F4C4 ")
 
+		// When the torrent name is a bare SHA1 hash (magnet added without a display
+		// name), flatten files directly to root so they behave like the traditional
+		// WebDAV which also skips the hash directory level.
+		isHashName := sha1Hash.MatchString(torrentName)
+
 		for _, f := range t.Files {
 			// Use ShortName to avoid double-nested paths (f.Name includes the torrent dir).
-			virtualPath := path.Join(torrentName, f.ShortName)
+			virtualPath := f.ShortName
+			if !isHashName {
+				virtualPath = path.Join(torrentName, f.ShortName)
+			}
 
 			rec := FileRecord{
 				TorrentID: t.ID,
