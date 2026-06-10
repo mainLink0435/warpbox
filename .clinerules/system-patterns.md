@@ -44,3 +44,4 @@ Plex/Jellyfin → rclone (FUSE mount) → WebDAV → Warpbox → TorBox API
 * Implementation commits reference issues (e.g., `fix: handle 401 expiry, closes #12`). The issue stays open until the fix is verified in deployment.
 * Before starting any non-trivial work, consult the issue tracker — not the
   chat history — for context and priorities.
+* Ensure you update the issues as you iterate through and work on them, and complete them etc.
