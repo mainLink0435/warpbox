@@ -18,3 +18,8 @@
      1. Move the issue to ✅ Done on the Kanban board (see system-patterns.md §8 for board operations).
      2. Use the `gitea-unified` `issue_write` tool (method: `update`, state: `closed`) to close it.
    - Include the issue number in the commit message for documentation purposes (e.g., `fix: handle CDN expiry, refs #28`), but do not rely on keywords to close it.
+
+8. **Deployment Modes:** Use these trigger phrases so the AI assistant knows which deployment path to follow:
+   - **"build and test locally"** — Compile a Windows .exe with `go build -o warpbox.exe ./cmd/warpbox/` for quick local testing without touching production.
+   - **"dev-deploy this" / "hot-swap"** — Run `.\dev-deploy script` to build a Linux binary on REDACTED and hot-swap it into the running warpbox container. ~70 seconds, no CI pipeline or registry involved. Requires SSH access to REDACTED (password prompted interactively).
+   - **"commit and release" / "tag"** — Normal release flow: commit, push, create a version tag. The CI pipeline builds binaries, creates a Gitea release, and pushes Docker images to the registry.

@@ -11,7 +11,21 @@
 ## 2. Local debugging
 
 * Although the CICD pipeline is set up, it takes some time to build and release, and then deploy into docker.
-* For most iterative development, we should use a locally built .exe and rclone.exe to test things.
+* For most iterative development, use a locally built .exe and rclone.exe to test basic WebDAV behaviour
+  without touching production:
+  ```
+  go build -o warpbox.exe ./cmd/warpbox/
+  .\warpbox.exe --config config.yml --db test.db
+  ```
+* For integration testing that requires the real Plex/rclone stack on REDACTED (WebDAV performance,
+  VFS caching, CDN hot-swap timing), use the dev-deploy hot-swap script:
+  ```
+  .\dev-deploy script
+  ```
+  This builds a static Linux binary inside a throwaway `golang:1.26-alpine` container on REDACTED,
+  copies it into the running warpbox container via `docker exec`, then restarts — all without
+  touching the CI pipeline or registry. Requires SSH access to REDACTED (password prompted
+  interactively). Takes ~70 seconds.
 
 ## 3. Build Targets & Cross-Compilation
 
