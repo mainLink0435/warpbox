@@ -50,6 +50,17 @@
   - The SDK's `RequestDownloadLinkRequestParams` confirms the token is a query param.
   - The permalink URL pattern documented by TorBox also uses query param: `https://api.torbox.app/v1/api/torrents/requestdl?token=APIKEY&torrent_id=NUMBER&file_id=NUMBER&redirect=true`.
 
+## D-005: CGO dependency via mattn/go-sqlite3
+
+- **Date:** 2026-06-07
+- **Context:** SQLite WAL mode is required for persistent metadata storage.
+- **Decision:** Use `github.com/mattn/go-sqlite3` (cgo-based).
+- **Rationale:**
+  - `mattn/go-sqlite3` is the de facto standard Go SQLite driver, uses CGO + SQLite amalgamation.
+  - Pure-Go alternatives (modernc.org/sqlite) exist but lack WAL mode support guarantees and have different performance characteristics.
+  - MinGW-w64 GCC is available on the dev machine (`x86_64-posix-seh-rev0, Built by MinGW-Builds project, 15.2.0`).
+- **Trade-off:** Cross-compilation for non-Windows targets requires a C cross-compiler or a different driver. For initial development on Windows, this is acceptable.
+
 ## D-006: Use Gitea Issues instead of active-context.md for work tracking
 
 - **Date:** 2026-06-10
@@ -74,17 +85,6 @@
   - Updated `.clinerules/source-control.md` and `.clinerules/system-patterns.md` so future AI sessions follow the same rules.
 - **Outcome:** Codified in the `.clinerules/` rules files. The project board still needs manual column assignment via the Gitea web UI (the Projects API is not exposed in Gitea 1.25.5).
 
-## D-005: CGO dependency via mattn/go-sqlite3
-
-- **Date:** 2026-06-07
-- **Context:** SQLite WAL mode is required for persistent metadata storage.
-- **Decision:** Use `github.com/mattn/go-sqlite3` (cgo-based).
-- **Rationale:**
-  - `mattn/go-sqlite3` is the de facto standard Go SQLite driver, uses CGO + SQLite amalgamation.
-  - Pure-Go alternatives (modernc.org/sqlite) exist but lack WAL mode support guarantees and have different performance characteristics.
-  - MinGW-w64 GCC is available on the dev machine (`x86_64-posix-seh-rev0, Built by MinGW-Builds project, 15.2.0`).
-- **Trade-off:** Cross-compilation for non-Windows targets requires a C cross-compiler or a different driver. For initial development on Windows, this is acceptable.
-
 ## D-008: Exponential backoff + negative cache + circuit breaker for CDN URL fetches
 
 - **Date:** 2026-06-11
@@ -101,3 +101,17 @@
   - The TorBox client `do()` method now logs non-200 response bodies at WARN level, truncated to 512 chars, using `url.Redacted()` to protect the API key. This was essential for diagnosing the 500 errors.
 - **Thresholds:** retries=3, backoff=[1s,2s,4s], 429 backoff=5s, negative-cache TTL=30s, circuit-breaker=[5 failures, 60s window, 5min stale]
 - **Issue:** #59
+
+## D-009: extea-as-subprocess rejected; project boards via CLI only
+
+- **Date:** 2026-06-11
+- **Context:** Gitea has no REST API for project boards. The CLI tool `extea` (a `tea` wrapper) was evaluated as a way to add kanban board operations to the `gitea-unified` MCP server.
+- **Decision:** Do not integrate extea into the MCP server. Boards are CLI-only.
+- **Rationale:**
+  - extea's web session auth was successfully reimplemented in Python (`BoardSession` class), and `projects_create` worked (created Board #1 in warpbox), but `columns_create` returned HTTP 500 regardless of CSRF method used.
+  - Spawning extea.exe as a Python subprocess timed out despite correct env vars, stdin=DEVNULL, correct flag ordering, and existing tea config — extea appears to require a TTY for an unknown internal reason.
+  - Both approaches consumed ~100 tool calls across 2 hours with no working outcome.
+- **Alternatives considered:**
+  1. Direct HTTP web session (partially worked, column CRUD got 500)
+  2. extea subprocess (extea hangs on stdin)
+- **Outcome:** Codified in the `.clinerules/` rules files. The project board still needs manual column assignment via the Gitea web UI (the Projects API is not exposed in Gitea 1.25.5).

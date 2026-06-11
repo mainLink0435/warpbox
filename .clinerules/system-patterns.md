@@ -44,8 +44,8 @@ Plex/Jellyfin → rclone (FUSE mount) → WebDAV → Warpbox → TorBox API
   Finish (or move back) existing work before pulling new items.
 * Every issue MUST carry at least one type label: `bug`, `enhancement`,
   `testing`, `research`, `architecture`, `docs`, `infra`, or `refactor`.
-* The AI assistant uses the `gitea-mcp` server to create, read, update, and
-  search issues, and to manage the Kanban board.
+* The AI assistant uses the `gitea-unified` MCP server to create, read, update,
+  and search issues, and to close completed issues.
 * Implementation commits reference issues (e.g., `fix: handle CDN expiry, refs #28`).
   The issue stays open until the fix is verified in deployment.
 * Before starting any non-trivial work, consult the issue tracker — not the
@@ -53,7 +53,30 @@ Plex/Jellyfin → rclone (FUSE mount) → WebDAV → Warpbox → TorBox API
 * When an issue is completed, move it to ✅ Done on the board, then close it
   manually via `issue_write` (method: `update`, state: `closed`).
 
-## 8. Wiki Usage
+## 8. Project Board Operations (Kanban)
+
+* **Gitea has no REST API for project boards.** API tokens return 404 on all
+  board endpoints. Do NOT attempt to implement board operations via HTTP calls
+  to the Gitea web UI — this has been attempted and failed repeatedly.
+* The `extea.exe` CLI tool (`C:\Users\user\Documents\Cline\MCP\extea\extea.exe`)
+  can manage board operations via web session auth, but **it requires an
+  interactive TTY**. Subprocess calls from the AI assistant hang indefinitely.
+  Board operations are therefore limited to the Gitea web UI.
+* Tea login config: `C:\Users\user\.config\tea\config.yml` (login: `cline`)
+* For reference, the extea commands (run manually in a real terminal) are:
+  ```
+  extea projects create --title "Name" --template kanban -r ben/warpbox -l cline
+  extea projects list -r ben/warpbox -l cline -o json
+  extea projects view 1 -r ben/warpbox -l cline -o json
+  extea columns create --project 1 --title "Backlog" -r ben/warpbox -l cline
+  extea projects assign 5 --issue 1 -r ben/warpbox -l cline
+  extea projects move 5 --column 3 --issue 1 -r ben/warpbox -l cline
+  ```
+* Issue tracking relies solely on labels (`status:*` or type labels), milestone
+  assignment, and the Gitea Issue tracker. Column position on the Kanban board
+  is managed manually via the web UI.
+
+## 9. Wiki Usage
 
 * Living specifications, testing strategies, architecture decision records
   (beyond the decision log), and onboarding guides belong in the Gitea Wiki.
