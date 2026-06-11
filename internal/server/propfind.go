@@ -36,8 +36,8 @@ type multiStatus struct {
 }
 
 type response struct {
-	Href     string    `xml:"D:href"`
-	PropStat propstat  `xml:"D:propstat"`
+	Href     string   `xml:"D:href"`
+	PropStat propstat `xml:"D:propstat"`
 }
 
 type propstat struct {
@@ -46,11 +46,11 @@ type propstat struct {
 }
 
 type prop struct {
-	DisplayName     string        `xml:"D:displayname"`
-	ContentLength   int64         `xml:"D:getcontentlength,omitempty"`
-	ContentType     string        `xml:"D:getcontenttype,omitempty"`
-	LastModified    string        `xml:"D:getlastmodified,omitempty"`
-	ResourceType    *resourceType `xml:"D:resourcetype,omitempty"`
+	DisplayName   string        `xml:"D:displayname"`
+	ContentLength int64         `xml:"D:getcontentlength,omitempty"`
+	ContentType   string        `xml:"D:getcontenttype,omitempty"`
+	LastModified  string        `xml:"D:getlastmodified,omitempty"`
+	ResourceType  *resourceType `xml:"D:resourcetype,omitempty"`
 }
 
 type resourceType struct {
@@ -129,7 +129,13 @@ func (s *Server) handlePropfind(w http.ResponseWriter, r *http.Request) {
 
 			if len(parts) > 1 {
 				// The file is nested deeper — the immediate child is a directory.
-				immediate[immediateName] = childInfo{isDir: true}
+				// Use the first file's created_at as the directory timestamp.
+				if existing, ok := immediate[immediateName]; !ok || existing.createdAt == "" {
+					immediate[immediateName] = childInfo{
+						isDir:     true,
+						createdAt: rec.CreatedAt,
+					}
+				}
 			} else {
 				// Direct file in the requested directory.
 				mime := rec.MimeType
@@ -152,7 +158,7 @@ func (s *Server) handlePropfind(w http.ResponseWriter, r *http.Request) {
 			childHref := baseHref + name
 			if info.isDir {
 				childHref += "/"
-				responses = appendResponse(responses, childHref, true, 0, "", "", "", &seen)
+				responses = appendResponse(responses, childHref, true, 0, "", "", info.createdAt, &seen)
 			} else {
 				responses = appendResponse(responses, childHref, false, info.size, info.name, info.mime, info.createdAt, &seen)
 			}
@@ -193,6 +199,7 @@ func appendResponse(responses []response, href string, isDir bool, size int64, n
 		p = prop{
 			DisplayName:  path.Base(href),
 			ResourceType: &resourceType{Collection: &collection{}},
+			LastModified: formatLastModified(createdAt),
 		}
 	} else {
 		p = prop{
