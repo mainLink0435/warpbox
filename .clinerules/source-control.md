@@ -23,3 +23,24 @@
    - **"build and test locally"** — Compile a Windows .exe with `go build -o warpbox.exe ./cmd/warpbox/` for quick local testing without touching production.
    - **"dev-deploy this" / "hot-swap"** — Run `.\dev-deploy script` to build a Linux binary on REDACTED and hot-swap it into the running warpbox container. ~70 seconds, no CI pipeline or registry involved. Requires SSH access to REDACTED (password prompted interactively).
    - **"commit and release" / "tag"** — Normal release flow: commit, push, create a version tag. The CI pipeline builds binaries, creates a Gitea release, and pushes Docker images to the registry.
+
+9. **Changelog Maintenance:** Every release MUST include an entry in `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
+
+   **When the user triggers "commit and release" or "tag":**
+   1. Run `git --no-pager tag --list "v*" --sort=-version:refname` to find the previous release tag (discard `-test`, `-ci` suffixed tags).
+   2. Run `git --no-pager log --oneline <prev_tag>..HEAD` to list commits since the last release.
+   3. Categorise commits by conventional commit prefix using these mappings:
+      - `feat:` → **### Added**
+      - `fix:` → **### Fixed**
+      - `refactor:`, `perf:` → **### Changed**
+      - `BREAKING CHANGE:` footer → add **⚠️ Breaking** note under the relevant section
+      - `chore:`, `test:` → omit unless user-facing impact
+      - `docs:` → always omit
+   4. Only include headings that have entries. If a release is bugfix-only, do not include empty Added/Changed sections.
+   5. Expand terse commit subjects into user-facing descriptions. Reference issue numbers (e.g., `(#28)`) and closed issues (e.g., `(closes #28)`) where applicable.
+   6. Prepend the new version section to `CHANGELOG.md` (under the `## [Unreleased]` heading if present, or at the top).
+   7. Add a version compare link at the bottom (e.g., `[vX.Y.Z]: https://REDACTED/ben/warpbox/compare/vPrev...vX.Y.Z`).
+   8. Stage and commit the updated `CHANGELOG.md` with message: `chore: update changelog for vX.Y.Z`.
+   9. Create the tag and push. The CI pipeline extracts the changelog section into the Gitea release body.
+
+   **Backfilling past releases** is also permitted using the same `git log` range method.
