@@ -60,6 +60,31 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// For WebDAV, if there's no Range header, redirect directly to the CDN
+	// rather than proxying (preserves the existing behaviour and avoids
+	// consuming a CDN connection slot for full-file downloads).
+	// The /http/ endpoint (handleHTTP) always proxies, even without Range,
+	// because browsers need proper Content-Type headers for inline playback.
+	if r.Header.Get("Range") == "" {
+		cdnURL, cdnErr := s.store.GetCDNURL(file.ID)
+		if cdnErr == nil && cdnURL != "" {
+			slog.Debug("GET: redirecting to CDN", "url", cdnURL)
+			http.Redirect(w, r, cdnURL, http.StatusFound)
+			return
+		}
+		// If we don't have a cached CDN URL, fall through to streamFileContent
+		// which will fetch one and proxy.
+	}
+
+	s.streamFileContent(w, r, file)
+}
+
+// streamFileContent serves file bytes through the CDN proxy pipeline.
+// Used by both handleGet (WebDAV) and handleHTTP (direct streaming).
+// It handles CDN URL resolution (with retry, hang/poll, negative cache,
+// circuit breaker), byte-range requests, RAM cache lookup/population,
+// and streaming the response to the client via a proxy from the CDN.
+func (s *Server) streamFileContent(w http.ResponseWriter, r *http.Request, file *metadata.FileRecord) {
 	// Get or refresh the CDN URL.
 	cdnURL, err := s.store.GetCDNURL(file.ID)
 	if err != nil {
@@ -77,7 +102,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 			// send success headers immediately and hold the connection while polling
 			// for the CDN URL. This looks like a slow spinning disk to Plex.
 			slog.Warn("GET: CDN URL unavailable, entering hang/poll mode",
-				"path", virtualPath,
+				"path", file.Path,
 				"source", file.Source,
 				"item_id", file.ItemID,
 				"file_id", file.FileID,
@@ -98,21 +123,25 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 
 	// Determine if the client requested a byte range.
 	rangeHeader := r.Header.Get("Range")
-	if rangeHeader == "" {
-		// No range — redirect directly to the CDN URL.
-		slog.Debug("GET: redirecting to CDN", "url", cdnURL)
-		http.Redirect(w, r, cdnURL, http.StatusFound)
-		return
+	var srvRange *httpRange
+	var isRange bool
+	if rangeHeader != "" {
+		var parseErr error
+		srvRange, parseErr = parseRange(rangeHeader, file.Size)
+		if parseErr != nil {
+			slog.Error("stream: invalid range", "range", rangeHeader, "error", parseErr)
+			http.Error(w, "Invalid range", http.StatusRequestedRangeNotSatisfiable)
+			return
+		}
+		isRange = true
+	} else {
+		// No range — serve the full file.
+		srvRange = &httpRange{
+			Start:  0,
+			End:    file.Size - 1,
+			Length: file.Size,
+		}
 	}
-
-	// Parse the byte range.
-	srvRange, err := parseRange(rangeHeader, file.Size)
-	if err != nil {
-		slog.Error("GET: invalid range", "range", rangeHeader, "error", err)
-		http.Error(w, "Invalid range", http.StatusRequestedRangeNotSatisfiable)
-		return
-	}
-
 	// Check the RAM cache first.
 	cachedData := s.cache.Get(int(file.ID), srvRange.Start)
 	if cachedData != nil {
@@ -123,8 +152,13 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", mime)
 		w.Header().Set("Content-Length", strconv.FormatInt(srvRange.Length, 10))
-		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", srvRange.Start, srvRange.End, file.Size))
-		w.WriteHeader(http.StatusPartialContent)
+		w.Header().Set("Accept-Ranges", "bytes")
+		if isRange {
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", srvRange.Start, srvRange.End, file.Size))
+			w.WriteHeader(http.StatusPartialContent)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
 		w.Write(cachedData)
 		return
 	}
@@ -188,6 +222,33 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 			continue // retry with the fresh URL
 		}
 
+		// 429 (rate limit) and 5xx (server error) from the CDN are transient.
+		// Instead of returning 502 (which rclone counts as an error toward
+		// maxErrorCount=10), route into hang/poll mode. The cached CDN URL is
+		// invalidated so the poll loop will re-fetch a fresh URL and give the
+		// CDN time to drain connections.
+		if proxyResp.StatusCode == http.StatusTooManyRequests ||
+			proxyResp.StatusCode >= 500 {
+			proxyResp.Body.Close()
+			slog.Warn("GET: CDN transient error, entering hang/poll mode",
+				"path", file.Path,
+				"status", proxyResp.StatusCode,
+				"source", file.Source,
+				"item_id", file.ItemID,
+				"file_id", file.FileID,
+			)
+			// Invalidate the cached CDN URL so the hang loop fetches a fresh one.
+			if s.cfg.CDNTtlMinutes > 0 {
+				expiry := time.Now().Add(-1 * time.Hour)
+				if err := s.store.SetCDNURL(file.ID, "", expiry); err != nil {
+					slog.Error("GET: failed to invalidate CDN URL cache",
+						"path", file.Path, "error", err)
+				}
+			}
+			s.handleGetCDNHang(w, r, file)
+			return
+		}
+
 		// Check for non-success status that won't be repaired.
 		if proxyResp.StatusCode != http.StatusOK && proxyResp.StatusCode != http.StatusPartialContent {
 			proxyResp.Body.Close()
@@ -209,8 +270,13 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", mime)
 		w.Header().Set("Content-Length", strconv.FormatInt(srvRange.Length, 10))
-		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", srvRange.Start, srvRange.End, file.Size))
-		w.WriteHeader(http.StatusPartialContent)
+		w.Header().Set("Accept-Ranges", "bytes")
+		if isRange {
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", srvRange.Start, srvRange.End, file.Size))
+			w.WriteHeader(http.StatusPartialContent)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
 
 		// Acquire a CDN connection slot to prevent excessive concurrent
 		// connections from causing TorBox CDN 429s.
@@ -546,6 +612,10 @@ func (s *Server) handleGetCDNHang(w http.ResponseWriter, r *http.Request, file *
 	}
 
 	// Proxy the data from CDN, streaming directly to the client.
+	// Acquire a CDN connection slot to respect the max concurrent connections limit.
+	s.AcquireCDNConn()
+	defer s.ReleaseCDNConn()
+
 	proxyClient := &http.Client{Timeout: 30 * time.Second}
 	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodGet, cdnURL, http.NoBody)
 	if err != nil {

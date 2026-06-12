@@ -13,7 +13,8 @@ import (
 	"strings"
 )
 
-// handleHTTP serves an HTML directory listing at /http/.
+// handleHTTP serves an HTML directory listing at /http/,
+// or streams file content directly if the path resolves to a file.
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	// Resolve the virtual path.
 	reqPath := strings.TrimRight(r.URL.Path, "/")
@@ -26,7 +27,21 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	virtualPath := strings.TrimPrefix(reqPath, "/http")
 	virtualPath = strings.TrimPrefix(virtualPath, "/")
 
-	// List files from SQLite matching this prefix.
+	// Check if this path resolves to a file first.
+	file, err := s.store.GetFileByPath(virtualPath)
+	if err != nil {
+		slog.Error("HTTP: store lookup failed", "path", virtualPath, "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	if file != nil {
+		// File found — stream it through the CDN proxy pipeline.
+		slog.Debug("HTTP: streaming file", "path", virtualPath, "size", file.Size)
+		s.streamFileContent(w, r, file)
+		return
+	}
+
+	// Not a file — serve HTML directory listing.
 	records, err := s.store.ListDir(virtualPath)
 	if err != nil {
 		slog.Error("HTTP browser: ListDir failed", "prefix", virtualPath, "error", err)
@@ -95,13 +110,14 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 			if mime == "" {
 				mime = "application/octet-stream"
 			}
-			files = append(files, entry{
-				Name:   displayName,
-				Href:   s.root + "/" + rec.Path,
-				Size:   rec.Size,
-				IsDir:  false,
-				Mime:   mime,
-			})
+		fileHref := "/http/" + rec.Path
+		files = append(files, entry{
+			Name:   displayName,
+			Href:   fileHref,
+			Size:   rec.Size,
+			IsDir:  false,
+			Mime:   mime,
+		})
 		}
 	}
 
