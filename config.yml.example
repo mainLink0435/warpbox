@@ -1,188 +1,143 @@
 # Warpbox Configuration
-# Copy this file to config.yml and fill in your values.
-#
-# Every setting in this file has a documented purpose, default value,
-# valid options/range, and whether it is required or optional.
+# ======================
+# This file documents every possible configuration key with its default value
+# and purpose. Uncomment and adjust values as needed.
 
-# ---------------------------------------------------------------------------
-# TorBox API Connection
-# ---------------------------------------------------------------------------
 torbox:
-  # Your TorBox API key (required).
-  # Obtain it from your TorBox account dashboard.
-  api_key: ""
+  # TorBox API key (required). Generate one from your TorBox account dashboard.
+  api_key: "changeme"
 
-# ---------------------------------------------------------------------------
-# WebDAV Server Settings
-# ---------------------------------------------------------------------------
 server:
-  # Network address and port the WebDAV server listens on.
-  # Optional. Default: ":1412"
-  # Type: string (host:port). Valid: any valid Go net.Listen address.
-  # Examples: ":1412" (all interfaces), "127.0.0.1:1412" (loopback only).
+  # Network address the WebDAV server listens on.
+  # Default: ":1412"
   listen_addr: ":1412"
 
-  # Root URL path for the WebDAV service.
-  # Optional. Default: "/webdav"
-  # Type: string (path). Valid: any URL path segment.
-  # rclone would use: http://localhost:1412/webdav/ as the URL.
+  # Root URL path for the WebDAV endpoint.
+  # Default: "/webdav"
   webdav_root: "/webdav"
 
-# ---------------------------------------------------------------------------
-# JIT RAM Cache Configuration
-# ---------------------------------------------------------------------------
 cache:
-  # Size of each pre-fetched chunk in megabytes.
-  # When a file read starts, Warpbox fetches this much data ahead and
-  # holds it in RAM for sequential reads.
-  # Optional. Default: 16. Valid range: 1–1024.
-  chunk_size_mb: 16
+  # Size of each chunk in the RAM buffer (in MB).
+  # Files are split into chunks for Just-In-Time buffering. Larger chunks
+  # reduce per-chunk overhead but increase RAM wastage for small reads.
+  # Default: 16
+  # chunk_size_mb: 16
 
-  # Maximum RAM to use for cached chunks in megabytes.
-  # When this limit is reached, chunks are evicted according to
-  # eviction_strategy to make room.
-  # Optional. Default: 512. Valid range: 64–16384.
-  max_ram_mb: 512
+  # Maximum RAM the buffer may consume (in MB).
+  # The cache will not allocate more than this. When full, the eviction
+  # strategy determines which chunks are freed.
+  # Default: 512
+  # max_ram_mb: 512
 
-  # Time-to-live for cached chunks in seconds.
-  # Chunks not accessed within this window are evicted from RAM.
-  # Only applies when eviction_strategy is "ttl".
-  # Optional. Default: 30. Valid range: 5–86400 (1 second to 24 hours).
-  ttl_seconds: 30
+  # Time-to-live for cached chunks (in seconds).
+  # Chunks older than this are eligible for eviction.
+  # Default: 30
+  # ttl_seconds: 30
 
-  # Cache eviction strategy.
-  # - "ttl" — Evict chunks after ttl_seconds of inactivity. Simple and
-  #   predictable. Best for most use cases.
-  # - "lru" — Evict the least recently used chunks when max_ram_mb is
-  #   exceeded. More memory-efficient under pressure but slightly more
-  #   CPU overhead.
-  # Optional. Default: "ttl".
-  eviction_strategy: "ttl"
+  # Eviction strategy: "ttl" or "lru".
+  #   ttl — evict oldest chunks first (by insertion time).
+  #   lru — evict least-recently-used chunks first.
+  # Default: "ttl"
+  # eviction_strategy: "ttl"
 
-  # How long to cache TorBox CDN download URLs in minutes.
-  # CDN URLs are valid for several hours. Caching them avoids a TorBox
-  # API call on every range request. Set to 0 to disable CDN URL caching
-  # (not recommended — increases API load).
-  # Optional. Default: 120. Valid range: 0–1440.
-  cdn_url_ttl_minutes: 120
+  # How long to cache CDN download URLs (in minutes).
+  # TorBox CDN URLs expire after a few hours. Setting this too high
+  # will serve stale URLs and cause 404 errors.
+  # Default: 120
+  # cdn_url_ttl_minutes: 120
 
-  # Enable automatic repair of stale CDN download URLs.
-  # When the CDN returns 403/404, Warpbox silently fetches a fresh URL
-  # from TorBox (via the throttle queue) and retries the request. This
-  # prevents broken files in Plex/Jellyfin when URLs expire within the
-  # cache window.
-  # Optional. Default: true.
-  cdn_url_auto_repair: true
+  # Automatically repair stale CDN URLs when a 404 is detected during proxy.
+  # When enabled, a CDN URL that returns 404 will be refreshed transparently.
+  # Default: true
+  # cdn_url_auto_repair: true
 
-  # Maximum number of CDN URL repair attempts per request before giving up.
-  # Each attempt makes a rate-limited TorBox API call, so keep this low.
-  # Set to 0 to disable retries regardless of cdn_url_auto_repair.
-  # Optional. Default: 2. Valid range: 0–10.
-  cdn_url_repair_retries: 2
+  # Maximum number of retries for CDN proxy requests that fail with a 404
+  # (after CDN URL repair). 0 means no retries.
+  # Default: 2
+  # cdn_url_repair_retries: 2
 
-  # Base backoff interval in seconds for CDN URL fetch retries.
-  # When TorBox returns a 5xx or 429 error, the fetch is retried with
-  # exponential backoff: backoff * 1s, * 2s, * 4s, etc.
-  # Optional. Default: 1. Valid range: 1–60.
-  cdn_url_retry_backoff: 1
+  # CDN URL fetch retry settings (for TorBox API errors, not CDN proxy errors).
+  # Backoff base in seconds between retry attempts.
+  # Default: 1
+  # cdn_url_retry_backoff: 1
+  # Maximum number of retry attempts when fetching a CDN URL from TorBox.
+  # Default: 1
+  # cdn_url_retry_attempts: 1
 
-  # Maximum number of CDN URL fetch retry attempts on TorBox API errors.
-  # Each retry makes a rate-limited API call, so keep this low.
-  # Set to 0 to disable retries (not recommended — transient errors
-  # will immediately fail).
-  # For server-side errors like DATABASE_ERROR ("try again later"),
-  # retrying multiple times just burns the rate budget. 1 retry
-  # is usually enough.
-  # Optional. Default: 1. Valid range: 0–10.
-  cdn_url_retry_attempts: 1
+  # Negative cache TTL (in seconds).
+  # When a CDN URL fetch fails, the failure is cached briefly to prevent
+  # Plex/jellyfin retry storms from hammering the TorBox API.
+  # Must be 1–300. Default: 30
+  # negative_cache_ttl_seconds: 30
 
-  # How long to cache failed CDN URL lookups in seconds (negative cache).
-  # When fetchCDNURL fails for a specific (torrent_id, file_id), subsequent
-  # requests for the same file within this window return the cached error
-  # without making an API call. This prevents Plex's retry loop from
-  # hammering TorBox with the same failing request.
-  # Optional. Default: 30. Valid range: 1–300.
-  negative_cache_ttl_seconds: 30
+  # Circuit breaker: per-torrent failure tracking.
+  # Number of failures within the window before the breaker trips.
+  # Default: 5
+  # circuit_breaker_failures: 5
+  # Sliding window in seconds for counting failures.
+  # Default: 60
+  # circuit_breaker_window_seconds: 60
+  # Minutes the breaker stays tripped before auto-reset.
+  # Default: 5
+  # circuit_breaker_stale_minutes: 5
 
-  # Circuit breaker: maximum number of failed CDN URL fetches per torrent
-  # within the sliding window. Once exceeded, the torrent is marked "stale"
-  # and all CDN URL fetches for all files in that torrent are skipped until
-  # the stale period expires. Reset automatically when stale period ends.
-  # Optional. Default: 5. Valid range: 1–100.
-  circuit_breaker_failures: 5
+  # Memory management settings.
+  # Default: 5000
+  # negative_cache_max_entries: 5000
+  # Default: 2000
+  # circuit_breaker_max_entries: 2000
+  # How often to sweep expired cache entries (in seconds). Must be 10–3600.
+  # Default: 60
+  # cleanup_interval_seconds: 60
+  # How often to log memory stats (in minutes). Must be 1–60.
+  # Default: 5
+  # memory_stats_interval_minutes: 5
 
-  # Circuit breaker: sliding window duration in seconds for counting failures.
-  # Optional. Default: 60. Valid range: 1–3600.
-  circuit_breaker_window_seconds: 60
+  # CDN proxy settings.
+  # Minimum chunk size in bytes to cache. Smaller chunks pass through.
+  # Default: 16384 (16 KB)
+  # min_chunk_bytes: 16384
+  # Maximum concurrent CDN proxy connections per request.
+  # Default: 8
+  # max_cdn_connections: 8
 
-  # Circuit breaker: how many minutes a stale torrent is skipped for.
-  # When a torrent is marked stale, all CDN URL fetches for its files are
-  # skipped until this period expires. At that point the torrent is retried.
-  # Optional. Default: 5. Valid range: 1–60.
-  circuit_breaker_stale_minutes: 5
-
-  # Maximum number of entries in the negative cache (per-file failure cache).
-  # When this limit is exceeded, the oldest entries are evicted during the
-  # periodic cleanup sweep. Each entry is a small struct (~32 bytes).
-  # Set lower to reduce memory usage, higher to reduce API calls on failures.
-  # Optional. Default: 5000. Valid range: 100–50000.
-  negative_cache_max_entries: 5000
-
-  # Maximum number of entries in the circuit breaker (per-torrent failure tracker).
-  # When this limit is exceeded, the oldest entries are evicted during the
-  # periodic cleanup sweep. Each entry tracks failure timestamps.
-  # Optional. Default: 2000. Valid range: 50–20000.
-  circuit_breaker_max_entries: 2000
-
-  # How often to sweep expired entries from the negative cache and circuit
-  # breaker maps in seconds. Higher values reduce CPU overhead but allow
-  # expired entries to linger longer.
-  # Optional. Default: 60. Valid range: 10–3600.
-  cleanup_interval_seconds: 60
-
-  # How often to log memory and cache statistics at INFO level.
-  # The log includes alloc_mb, sys_mb, cache_used_mb, negative_cache count,
-  # circuit_breaker count, and GC cycles. Set to 0 to disable periodic logging.
-  # Optional. Default: 5. Valid range: 1–60.
-  memory_stats_interval_minutes: 5
-
-# ---------------------------------------------------------------------------
-# Rate-Limiting / Throttle
-# ---------------------------------------------------------------------------
 throttle:
-  # Maximum number of API requests allowed per minute to TorBox.
-  # TorBox enforces a 300 requests/minute hard limit. Setting this higher
-  # than 300 is allowed in the config for flexibility but may result in
-  # rate-limit errors from TorBox.
-  # Optional. Default: 250. Valid range: 10–1000.
+  # Maximum sustained TorBox API requests per minute.
+  # The free TorBox plan allows 300 RPM. Setting this higher will result
+  # in 429 errors. Must be 10–1000.
+  # Default: 250
   requests_per_minute: 250
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 logging:
-  # Log output format.
-  # - "text" — Human-readable key=value pairs. Best for local development
-  #   and debugging. Shows timestamps, log level, and message inline.
-  # - "json" — Structured JSON objects. Best for production environments
-  #   and log aggregation systems (e.g., Loki, Datadog, ELK).
-  # Optional. Default: "text".
-  format: "text"
+  # Output format: "text" for human-readable, "json" for structured logging.
+  # Default: "text"
+  # format: "text"
 
-  # Log verbosity level.
-  # - "debug" — Verbose logging including every PROPFIND/GET/HEAD request.
-  #   Only use temporarily for troubleshooting — significantly increases CPU.
-  # - "info" — Normal operational messages. Recommended for production.
-  # - "warn" — Warning conditions.
-  # - "error" — Error conditions only.
-  # Optional. Default: "info".
-  level: "info"
+  # Log level: "debug", "info", "warn", or "error".
+  # Default: "info"
+  # level: "info"
 
-# ---------------------------------------------------------------------------
-# Metadata Sync
-# ---------------------------------------------------------------------------
 sync:
-  # How often to refresh the local SQLite metadata cache from TorBox.
-  # A full sync calls the TorBox API once, so the throttle rate applies.
-  # Optional. Default: 5. Valid range: 1–1440 (1 minute to 24 hours).
-  interval_minutes: 5
+  # How often to sync metadata from TorBox (in minutes).
+  # Default: 5
+  # interval_minutes: 5
+
+  # Maximum number of files to fetch per sync cycle.
+  # Default: 5000
+  # limit: 5000
+
+stats:
+  # How often to record time-series stats snapshots (in seconds).
+  # Snapshots include API call counts, memory usage, cache stats, etc.
+  # These are displayed as sparkline charts on the landing page.
+  # Default: 60
+  # interval_seconds: 60
+
+  # How long to retain stats rows (in hours).
+  # Older rows are automatically pruned during each stats interval.
+  # Default: 24
+  # retention_hours: 24
+
+  # How far back the landing page sparkline chart shows (in minutes).
+  # Default: 60
+  # chart_minutes: 60

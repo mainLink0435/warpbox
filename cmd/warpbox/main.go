@@ -98,8 +98,6 @@ func main() {
 		"log_level", cfg.Logging.Level,
 	)
 
-	torBoxClient := torbox.NewClient(cfg.TorBox.APIKey)
-
 	dbDir := filepath.Dir(*dbPath)
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		slog.Error("creating database directory", "dir", dbDir, "error", err)
@@ -125,6 +123,9 @@ func main() {
 	defer ramCache.Stop()
 
 	throttleQueue := throttle.NewQueue(cfg.Throttle.RequestsPerMinute)
+
+	torBoxClient := torbox.NewClient(cfg.TorBox.APIKey)
+	torBoxClient.HTTP429Callback = func() { throttleQueue.Record429() }
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -179,6 +180,9 @@ func main() {
 		MinChunkBytes:           *cfg.Cache.MinChunkBytes,
 		MaxCDNConnections:       *cfg.Cache.MaxCDNConnections,
 		ConfigPath:              *configPath,
+		StatsIntervalSeconds:    cfg.Stats.IntervalSeconds,
+		StatsRetentionHours:     cfg.Stats.RetentionHours,
+		StatsChartMinutes:       cfg.Stats.ChartMinutes,
 	}
 	serverCfg.LevelVar = levelVar
 

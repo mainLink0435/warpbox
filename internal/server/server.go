@@ -7,8 +7,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	_ "net/http/pprof"
 	"log/slog"
 	"net/http"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -73,6 +76,10 @@ type Server struct {
 
 	// Path to config file for runtime log level toggle.
 	configPath string
+
+	// Stats recording config.
+	statsRetention  time.Duration // How long to retain stats rows
+	statsChartSince time.Duration // How far back the landing page chart shows
 }
 
 // Config holds the server-specific configuration.
@@ -111,10 +118,15 @@ type Config struct {
 
 	// CDN proxy settings.
 	MinChunkBytes     int // Skip caching chunks smaller than this; default 16384
-	MaxCDNConnections int // Max concurrent CDN proxy connections; default 8
+	MaxCDNConnections int // Max concurrent CDN proxy connections; default 4
 
 	// Path to config file for runtime log level toggle.
 	ConfigPath string
+
+	// Stats collection settings.
+	StatsIntervalSeconds int // How often to record stats; default 60
+	StatsRetentionHours  int // How long to retain stats rows; default 24
+	StatsChartMinutes    int // How far back the landing page chart shows; default 60
 
 	// LevelVar for atomic runtime log level switching. Shared with main.go's
 	// slog.HandlerOptions.Level so a Set() call takes effect immediately.
@@ -126,7 +138,7 @@ type Config struct {
 func New(cfg Config, store *metadata.Store, c *cache.Buffer, torBox *torbox.Client, queue *throttle.Queue) *Server {
 	maxConns := cfg.MaxCDNConnections
 	if maxConns < 1 {
-		maxConns = 8
+		maxConns = 4
 	}
 
 	s := &Server{
@@ -147,6 +159,8 @@ func New(cfg Config, store *metadata.Store, c *cache.Buffer, torBox *torbox.Clie
 		circuitBreakerMaxEntries: cfg.CircuitBreakerMaxEntries,
 		minChunkBytes:          cfg.MinChunkBytes,
 		configPath:             cfg.ConfigPath,
+		statsRetention:          time.Duration(cfg.StatsRetentionHours) * time.Hour,
+		statsChartSince:         time.Duration(cfg.StatsChartMinutes) * time.Minute,
 	}
 	// Fill the semaphore so we can Acquire/Release.
 	for i := 0; i < maxConns; i++ {
@@ -178,7 +192,8 @@ func (s *Server) ConfigPath() string {
 }
 
 // startCleanupLoop runs a periodic background goroutine that sweeps expired
-// entries from the negative cache and circuit breaker maps.
+// entries from the negative cache and circuit breaker maps, and records
+// time-series stats.
 func (s *Server) startCleanupLoop() {
 	interval := time.Duration(s.cfg.CleanupIntervalSeconds) * time.Second
 	if interval <= 0 {
@@ -192,6 +207,14 @@ func (s *Server) startCleanupLoop() {
 			case <-ticker.C:
 				s.sweepNegativeCache()
 				s.sweepCircuitBreaker()
+				s.recordStats()
+				if s.statsRetention > 0 {
+					if n, err := s.store.PruneStats(s.statsRetention); err != nil {
+						slog.Debug("stats prune failed", "error", err)
+					} else if n > 0 {
+						slog.Debug("pruned old stats", "rows", n)
+					}
+				}
 				// Force Go to release unused memory arenas back to the OS.
 				// Without this, Go's runtime holds onto pages from past peak
 				// allocations (the high-water mark), causing sys_mem to stay
@@ -202,6 +225,33 @@ func (s *Server) startCleanupLoop() {
 			}
 		}
 	}()
+}
+
+// recordStats snapshots current metrics and writes them to the stats table.
+func (s *Server) recordStats() {
+	throttleStats := s.queue.Stats()
+
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	cacheEntries, cacheUsedRAM, _ := s.CacheStats()
+
+	metrics := map[string]float64{
+		"api_calls_success":       float64(throttleStats.SuccessfulCalls),
+		"api_calls_failed":        float64(throttleStats.FailedCalls),
+		"api_calls_429":           float64(throttleStats.HTTP429Calls),
+		"sys_mb":                  float64(mem.Sys / 1024 / 1024),
+		"alloc_mb":                float64(mem.Alloc / 1024 / 1024),
+		"total_alloc_mb":          float64(mem.TotalAlloc / 1024 / 1024),
+		"cache_entries":           float64(cacheEntries),
+		"cache_used_mb":           float64(cacheUsedRAM / (1024 * 1024)),
+		"negative_cache_entries":  float64(s.NegativeCacheSize()),
+		"circuit_breaker_entries": float64(s.CircuitBreakerSize()),
+	}
+
+	if err := s.store.RecordStats(metrics); err != nil {
+		slog.Debug("stats record failed", "error", err)
+	}
 }
 
 // StopCleanup stops the periodic cleanup goroutine. Intended for tests.
@@ -339,6 +389,15 @@ func (s *Server) registerRoutes() {
 
 	s.mux.Handle("/actions/", s.versionHeader(http.HandlerFunc(s.handleActions)))
 
+	// pprof endpoints for runtime profiling (heap, goroutine, CPU, etc.)
+	s.mux.Handle("/debug/pprof/", s.versionHeader(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.DefaultServeMux.ServeHTTP(w, r)
+	})))
+	s.mux.Handle("/debug/pprof", s.versionHeader(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.DefaultServeMux.ServeHTTP(w, r)
+	})))
+
+	s.mux.Handle("/stats.json", s.versionHeader(http.HandlerFunc(s.handleStatsJSON)))
 	s.mux.Handle("/", s.versionHeader(http.HandlerFunc(s.handleLanding)))
 	s.mux.HandleFunc("/warpbox.svg", s.handleLogo)
 	s.mux.HandleFunc("/favicon.ico", s.handleLogo)
@@ -374,6 +433,46 @@ func (s *Server) handleOptions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("DAV", "1")
 	w.Header().Set("Allow", "OPTIONS, GET, HEAD, PROPFIND")
 	w.WriteHeader(http.StatusOK)
+}
+
+// statsDataPoint is a single timestamped value for the JSON endpoint.
+type statsDataPoint struct {
+	T string  `json:"t"`
+	V float64 `json:"v"`
+}
+
+// handleStatsJSON returns stats data as JSON for the Chart.js frontend.
+// Query param: minutes (default: from config, currently 60).
+func (s *Server) handleStatsJSON(w http.ResponseWriter, r *http.Request) {
+	mins := s.cfg.StatsChartMinutes
+	if mins <= 0 {
+		mins = 60
+	}
+	since := time.Now().Add(-time.Duration(mins) * time.Minute)
+
+	grouped, err := s.store.QueryAllStatsSince(since)
+	if err != nil {
+		slog.Error("stats.json query failed", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	result := make(map[string][]statsDataPoint, len(grouped))
+	for metric, records := range grouped {
+		points := make([]statsDataPoint, len(records))
+		for i, rec := range records {
+			points[i] = statsDataPoint{
+				T: rec.Timestamp.UTC().Format(time.RFC3339),
+				V: rec.Value,
+			}
+		}
+		result[metric] = points
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		slog.Error("stats.json encode failed", "error", err)
+	}
 }
 
 // Start begins listening on the configured address.

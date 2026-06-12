@@ -29,14 +29,16 @@ type Queue struct {
 
 	successfulCalls int64
 	failedCalls     int64
+	http429Calls    int64
 }
 
 // Stats returns throttle statistics for the landing page.
 type Stats struct {
-	TotalCalls       int64
-	SuccessfulCalls  int64
-	FailedCalls      int64
-	CallsLastMinute  int
+	TotalCalls        int64
+	SuccessfulCalls   int64
+	FailedCalls       int64
+	HTTP429Calls      int64
+	CallsLastMinute   int
 	RequestsPerMinute int
 }
 
@@ -66,11 +68,12 @@ func (q *Queue) Stats() Stats {
 	}
 
 	return Stats{
-		TotalCalls:        q.totalCalls,
-		SuccessfulCalls:   q.successfulCalls,
-		FailedCalls:       q.failedCalls,
-		CallsLastMinute:   recent,
-		RequestsPerMinute: int(time.Minute / q.rate),
+		TotalCalls:         q.totalCalls,
+		SuccessfulCalls:    q.successfulCalls,
+		FailedCalls:        q.failedCalls,
+		HTTP429Calls:       q.http429Calls,
+		CallsLastMinute:    recent,
+		RequestsPerMinute:  int(time.Minute / q.rate),
 	}
 }
 
@@ -127,6 +130,13 @@ func (q *Queue) processLoop(ctx context.Context) {
 		}
 		q.mu.Unlock()
 	}
+}
+
+// Record429 increments the 429 counter under lock.
+func (q *Queue) Record429() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.http429Calls++
 }
 
 // Start launches the processing loop in a background goroutine.

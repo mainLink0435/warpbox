@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Warpbox {{.Version}}</title>
-<link rel="icon" href="/favicon.ico" type="image/png">
+    <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -94,6 +95,30 @@
     background: #334155;
     border-color: #38bdf8;
   }
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .chart-box {
+    background: #1e293b;
+    border-radius: 8px;
+    padding: 0.5rem;
+  }
+  .chart-box h4 {
+    color: #94a3b8;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+    padding: 0 0.25rem;
+  }
+  .chart-box canvas {
+    width: 100% !important;
+    height: 120px !important;
+  }
   .footer {
     text-align: center;
     margin-top: 2rem;
@@ -143,7 +168,7 @@
 <body>
 <div class="container">
   <div class="header">
-    <img src="/warpbox.png" alt="Warpbox logo">
+    <img src="/warpbox.svg" alt="Warpbox logo">
     <h1>Warpbox</h1>
     <p>A high-performance WebDAV proxy for TorBox</p>
   </div>
@@ -223,6 +248,14 @@
       </td>
     </tr>
   </table>
+
+  <table id="stats-table" style="display:none">
+    <tr><th colspan="2">Stats (60 min window)</th></tr>
+    <tr><td colspan="2">
+      <div class="chart-grid" id="chart-grid"></div>
+    </td></tr>
+  </table>
+
   <table>
     <tr><th colspan="2">Log Level</th></tr>
     <tr class="actions">
@@ -256,6 +289,151 @@
 
 <script>
 (function() {
+  // Chart.js config — dark theme defaults
+  Chart.defaults.color = '#94a3b8';
+  Chart.defaults.borderColor = '#1e293b';
+  Chart.defaults.font.family = "'SF Mono','Fira Code','Fira Mono',monospace";
+
+  const COLORS = {
+    success: '#22c55e',
+    failed: '#f87171',
+    '429s': '#fbbf24',
+    'total alloc': '#a78bfa',
+    'sys mem': '#38bdf8',
+    'alloc': '#2dd4bf',
+    'cache entries': '#f472b6',
+    'cache used': '#fb923c',
+    'neg cache': '#c084fc',
+    'breaker': '#e879f9',
+  };
+
+  // Metric definitions: label, dbKey, unit, color
+  const METRICS = [
+    { label: 'success',     key: 'api_calls_success',      unit: '',   color: COLORS.success },
+    { label: 'failed',      key: 'api_calls_failed',       unit: '',   color: COLORS.failed },
+    { label: '429s',        key: 'api_calls_429',          unit: '',   color: COLORS['429s'] },
+    { label: 'total alloc', key: 'total_alloc_mb',          unit: 'MB', color: COLORS['total alloc'] },
+    { label: 'sys mem',     key: 'sys_mb',                 unit: 'MB', color: COLORS['sys mem'] },
+    { label: 'alloc',       key: 'alloc_mb',                unit: 'MB', color: COLORS.alloc },
+    { label: 'cache entries', key: 'cache_entries',         unit: '',   color: COLORS['cache entries'] },
+    { label: 'cache used',  key: 'cache_used_mb',          unit: 'MB', color: COLORS['cache used'] },
+    { label: 'neg cache',   key: 'negative_cache_entries', unit: '',   color: COLORS['neg cache'] },
+    { label: 'breaker',     key: 'circuit_breaker_entries',unit: '',   color: COLORS.breaker },
+  ];
+
+  let charts = [];
+
+  function renderCharts(data) {
+    const grid = document.getElementById('chart-grid');
+    grid.innerHTML = '';
+
+    METRICS.forEach(function(metric) {
+      const points = data[metric.key] || [];
+
+      const box = document.createElement('div');
+      box.className = 'chart-box';
+
+      const label = document.createElement('h4');
+      label.textContent = metric.label + (metric.unit ? ' (' + metric.unit + ')' : '');
+      box.appendChild(label);
+
+      const canvas = document.createElement('canvas');
+      canvas.id = 'chart-' + metric.key.replace(/_/g, '-');
+      box.appendChild(canvas);
+
+      grid.appendChild(box);
+
+      const timestamps = points.map(function(p) { return p.t; });
+      const values = points.map(function(p) { return p.v; });
+
+      const ctx = canvas.getContext('2d');
+      const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: timestamps,
+          datasets: [{
+            data: values,
+            borderColor: metric.color,
+            backgroundColor: metric.color + '20',
+            fill: true,
+            tension: 0.2,
+            pointRadius: 0,
+            pointHitRadius: 6,
+            borderWidth: 1.5,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1e293b',
+              titleColor: '#e2e8f0',
+              bodyColor: '#38bdf8',
+              borderColor: '#334155',
+              borderWidth: 1,
+              cornerRadius: 6,
+              padding: 8,
+              callbacks: {
+                title: function(items) {
+                  var d = new Date(items[0].label);
+                  return d.toLocaleTimeString();
+                },
+                label: function(item) {
+                  return item.parsed.y + (metric.unit ? ' ' + metric.unit : '');
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              display: false,
+              grid: { display: false }
+            },
+            y: {
+              display: true,
+              grid: { color: '#1e293b', drawTicks: false },
+              ticks: {
+                font: { size: 9 },
+                maxTicksLimit: 5,
+                callback: function(val) {
+                  return val + (metric.unit ? metric.unit : '');
+                }
+              }
+            }
+          },
+          interaction: {
+            intersect: false,
+            mode: 'index'
+          }
+        }
+      });
+      charts.push(chart);
+    });
+
+    document.getElementById('stats-table').style.display = '';
+  }
+
+  function loadStats() {
+    fetch('/stats.json')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        // Destroy old charts before re-creating
+        charts.forEach(function(c) { c.destroy(); });
+        charts = [];
+        renderCharts(data);
+      })
+      .catch(function(err) {
+        console.error('stats load failed:', err);
+      });
+  }
+
+  // Load on page load, then refresh every 60s
+  loadStats();
+  setInterval(loadStats, 60000);
+
+  // Toast notifications for log level forms
   const forms = document.querySelectorAll('form[action="/actions/loglevel"]');
   const logLevelCell = document.getElementById('log-level-value');
 

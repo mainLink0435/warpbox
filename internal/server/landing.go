@@ -10,14 +10,13 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
-	"io"
 	"log/slog"
 	"net/http"
 	"runtime"
 	"time"
 )
 
-//go:embed landing.html warpbox-sm.png
+//go:embed landing.html warpbox.svg
 var landingFS embed.FS
 
 // landingTmpl is the parsed landing page template.
@@ -180,40 +179,15 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%ds", s)
 }
 
-// handleLogo serves the embedded warpbox.png at /warpbox.png and also at
+// handleLogo serves the embedded warpbox.svg at /warpbox.svg and also at
 // /favicon.ico, giving the landing page a branded browser tab icon.
 func (s *Server) handleLogo(w http.ResponseWriter, r *http.Request) {
-	png, err := landingFS.ReadFile("warpbox-sm.png")
+	svg, err := landingFS.ReadFile("warpbox.svg")
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	http.ServeContent(w, r, "warpbox.png", time.Time{}, &byteReadSeeker{data: png})
-}
-
-// byteReadSeeker wraps a []byte so it can be passed to http.ServeContent.
-type byteReadSeeker struct {
-	data []byte
-	off  int
-}
-
-func (b *byteReadSeeker) Read(p []byte) (int, error) {
-	if b.off >= len(b.data) {
-		return 0, io.EOF
-	}
-	n := copy(p, b.data[b.off:])
-	b.off += n
-	return n, nil
-}
-
-func (b *byteReadSeeker) Seek(offset int64, whence int) (int64, error) {
-	switch whence {
-	case io.SeekStart:
-		b.off = int(offset)
-	case io.SeekCurrent:
-		b.off += int(offset)
-	case io.SeekEnd:
-		b.off = len(b.data) + int(offset)
-	}
-	return int64(b.off), nil
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.WriteHeader(http.StatusOK)
+	w.Write(svg)
 }

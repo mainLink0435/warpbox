@@ -22,9 +22,10 @@ import (
 
 // Client communicates with the TorBox API.
 type Client struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
+	baseURL       string
+	apiKey        string
+	httpClient    *http.Client
+	HTTP429Callback func() // Called when a 429 response is received
 }
 
 // NewClient creates a new TorBox API client.
@@ -248,6 +249,12 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("torbox: reading response: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		if c.HTTP429Callback != nil {
+			c.HTTP429Callback()
+		}
 	}
 
 	if resp.StatusCode != http.StatusOK {

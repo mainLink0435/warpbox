@@ -72,6 +72,13 @@ type SyncConfig struct {
 	Limit           int `yaml:"limit"`            // Max files to fetch per sync; default: 5000
 }
 
+// StatsConfig holds time-series stats collection settings.
+type StatsConfig struct {
+	IntervalSeconds int `yaml:"interval_seconds"` // How often to record stats snapshots; default 60
+	RetentionHours  int `yaml:"retention_hours"`  // How long to retain stats rows; default 24
+	ChartMinutes    int `yaml:"chart_minutes"`    // How far back the landing page chart shows; default 60
+}
+
 // Config is the top-level Warpbox configuration.
 type Config struct {
 	TorBox   TorBoxConfig   `yaml:"torbox"`
@@ -80,6 +87,7 @@ type Config struct {
 	Throttle ThrottleConfig `yaml:"throttle"`
 	Logging  LoggingConfig  `yaml:"logging"`
 	Sync     SyncConfig     `yaml:"sync"`
+	Stats    StatsConfig    `yaml:"stats"`
 }
 
 // setDefaults fills in default values for any zero-valued fields.
@@ -127,6 +135,15 @@ func setDefaults(c *Config) {
 	}
 	if c.Sync.Limit == 0 {
 		c.Sync.Limit = 5000
+	}
+	if c.Stats.IntervalSeconds == 0 {
+		c.Stats.IntervalSeconds = 60
+	}
+	if c.Stats.RetentionHours == 0 {
+		c.Stats.RetentionHours = 24
+	}
+	if c.Stats.ChartMinutes == 0 {
+		c.Stats.ChartMinutes = 60
 	}
 	if c.Cache.CDNURLAutoRepair == nil {
 		t := true
