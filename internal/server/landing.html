@@ -107,6 +107,37 @@
   .footer a:hover {
     color: #94a3b8;
   }
+  /* Toast notification styles */
+  #toast-container {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .toast {
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    animation: toast-in 0.3s ease-out;
+    max-width: 360px;
+  }
+  .toast-success { background: #166534; border: 1px solid #22c55e; }
+  .toast-error   { background: #7f1d1d; border: 1px solid #ef4444; }
+  .toast-fadeout { animation: toast-out 0.3s ease-in forwards; }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(1rem); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes toast-out {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(1rem); }
+  }
 </style>
 </head>
 <body>
@@ -176,7 +207,7 @@
   <table>
     <tr><th colspan="2">Logging</th></tr>
     <tr><td>Format</td><td>{{.LogFormat}}</td></tr>
-    <tr><td>Level</td><td>{{.LogLevel}}</td></tr>
+    <tr><td>Level</td><td id="log-level-value">{{.LogLevel}}</td></tr>
   </table>
 
   <table>
@@ -216,9 +247,55 @@
     </tr>
   </table>
 
+  <div id="toast-container"></div>
+
   <div class="footer">
     <a href="https://REDACTED/ben/warpbox">ben/warpbox</a>
   </div>
 </div>
+
+<script>
+(function() {
+  const forms = document.querySelectorAll('form[action="/actions/loglevel"]');
+  const logLevelCell = document.getElementById('log-level-value');
+
+  function showToast(message, type) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(function() {
+      toast.className += ' toast-fadeout';
+      setTimeout(function() { toast.remove(); }, 300);
+    }, 3000);
+  }
+
+  forms.forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var params = new URLSearchParams(new FormData(form));
+      fetch('/actions/loglevel', { method: 'POST', body: params })
+        .then(function(resp) {
+          if (resp.ok) {
+            return resp.text().then(function(text) {
+              showToast(text.trim(), 'success');
+              if (logLevelCell) {
+                logLevelCell.textContent = params.get('level');
+              }
+            });
+          } else {
+            return resp.text().then(function(text) {
+              showToast(text.trim() || 'Request failed', 'error');
+            });
+          }
+        })
+        .catch(function(err) {
+          showToast('Network error: ' + err.message, 'error');
+        });
+    });
+  });
+})();
+</script>
 </body>
 </html>
