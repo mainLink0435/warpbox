@@ -433,10 +433,7 @@
   loadStats();
   setInterval(loadStats, 60000);
 
-  // Toast notifications for log level forms
-  const forms = document.querySelectorAll('form[action="/actions/loglevel"]');
-  const logLevelCell = document.getElementById('log-level-value');
-
+  // Toast notifications for all action forms
   function showToast(message, type) {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
@@ -449,24 +446,28 @@
     }, 3000);
   }
 
-  forms.forEach(function(form) {
+  const actionForms = document.querySelectorAll('form[action^="/actions/"]');
+  actionForms.forEach(function(form) {
     form.addEventListener('submit', function(e) {
       e.preventDefault();
-      var params = new URLSearchParams(new FormData(form));
-      fetch('/actions/loglevel', { method: 'POST', body: params })
+      var body = new URLSearchParams(new FormData(form));
+      var action = form.getAttribute('action');
+      fetch(action, { method: 'POST', body: body })
         .then(function(resp) {
-          if (resp.ok) {
-            return resp.text().then(function(text) {
+          return resp.text().then(function(text) {
+            if (resp.ok) {
               showToast(text.trim(), 'success');
-              if (logLevelCell) {
-                logLevelCell.textContent = params.get('level');
+              // If this was a log level change, update the displayed level
+              if (action === '/actions/loglevel') {
+                var levelCell = document.getElementById('log-level-value');
+                if (levelCell) {
+                  levelCell.textContent = body.get('level');
+                }
               }
-            });
-          } else {
-            return resp.text().then(function(text) {
+            } else {
               showToast(text.trim() || 'Request failed', 'error');
-            });
-          }
+            }
+          });
         })
         .catch(function(err) {
           showToast('Network error: ' + err.message, 'error');
