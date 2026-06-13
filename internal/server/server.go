@@ -75,6 +75,12 @@ type Server struct {
 	statsRetention  time.Duration // How long to retain stats rows
 	statsChartSince time.Duration // How far back the landing page chart shows
 
+	// Previous counter values for computing per-interval deltas in recordStats().
+	prevSuccessfulCalls int64
+	prevFailedCalls     int64
+	prev429Calls        int64
+	prevTotalAlloc      uint64
+
 	// TorBox user info (refreshed periodically).
 	torboxUserInfo   *torbox.UserInfo
 	torboxUserInfoMu sync.Mutex
@@ -209,19 +215,36 @@ func (s *Server) startCleanupLoop() {
 }
 
 // recordStats snapshots current metrics and writes them to the stats table.
+// Counter metrics (success/fail/429/total_alloc) are recorded as per-interval
+// deltas so charts show rate, not cumulative totals.
 func (s *Server) recordStats() {
 	throttleStats := s.queue.Stats()
 
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 
+	// Compute per-interval deltas for counter metrics.
+	dSuccess := throttleStats.SuccessfulCalls - s.prevSuccessfulCalls
+	dFailed := throttleStats.FailedCalls - s.prevFailedCalls
+	d429 := throttleStats.HTTP429Calls - s.prev429Calls
+	dTotalAlloc := mem.TotalAlloc - s.prevTotalAlloc
+
+	// Update prev values for next interval.
+	s.prevSuccessfulCalls = throttleStats.SuccessfulCalls
+	s.prevFailedCalls = throttleStats.FailedCalls
+	s.prev429Calls = throttleStats.HTTP429Calls
+	s.prevTotalAlloc = mem.TotalAlloc
+
 	metrics := map[string]float64{
-		"api_calls_success":       float64(throttleStats.SuccessfulCalls),
-		"api_calls_failed":        float64(throttleStats.FailedCalls),
-		"api_calls_429":           float64(throttleStats.HTTP429Calls),
+		// Per-interval deltas.
+		"api_calls_success": float64(dSuccess),
+		"api_calls_failed":  float64(dFailed),
+		"api_calls_429":     float64(d429),
+		"total_alloc_mb":    float64(dTotalAlloc / 1024 / 1024),
+
+		// Gauges — point-in-time values, not deltas.
 		"sys_mb":                  float64(mem.Sys / 1024 / 1024),
 		"alloc_mb":                float64(mem.Alloc / 1024 / 1024),
-		"total_alloc_mb":          float64(mem.TotalAlloc / 1024 / 1024),
 		"negative_cache_entries":  float64(s.NegativeCacheSize()),
 		"circuit_breaker_entries": float64(s.CircuitBreakerSize()),
 	}
