@@ -98,14 +98,6 @@ func setDefaults(c *Config) {
 	}
 	if c.Throttle.RequestsPerMinute == 0 {
 		c.Throttle.RequestsPerMinute = 250
-	} else {
-		// Clamp to valid range; validation below provides the error.
-		if c.Throttle.RequestsPerMinute < 10 {
-			c.Throttle.RequestsPerMinute = 10
-		}
-		if c.Throttle.RequestsPerMinute > 1000 {
-			c.Throttle.RequestsPerMinute = 1000
-		}
 	}
 	if c.Logging.Format == "" {
 		c.Logging.Format = "text"
@@ -187,8 +179,29 @@ func validate(c *Config) error {
 	if c.TorBox.APIKey == "" {
 		return fmt.Errorf("torbox.api_key is required")
 	}
+	if err := ParseFormat(c.Logging.Format); err != nil {
+		return fmt.Errorf("logging.format: %w", err)
+	}
 	if _, err := ParseLevel(c.Logging.Level); err != nil {
 		return fmt.Errorf("logging.level: %w", err)
+	}
+	if c.Cache.CDNURLTTLMinutes < 1 || c.Cache.CDNURLTTLMinutes > 1440 {
+		return fmt.Errorf("cache.cdn_url_ttl_minutes must be 1–1440, got %d", c.Cache.CDNURLTTLMinutes)
+	}
+	if c.Sync.IntervalMinutes < 1 || c.Sync.IntervalMinutes > 1440 {
+		return fmt.Errorf("sync.interval_minutes must be 1–1440, got %d", c.Sync.IntervalMinutes)
+	}
+	if c.Sync.Limit < 1 || c.Sync.Limit > 100000 {
+		return fmt.Errorf("sync.limit must be 1–100000, got %d", c.Sync.Limit)
+	}
+	if c.Stats.IntervalSeconds < 10 || c.Stats.IntervalSeconds > 3600 {
+		return fmt.Errorf("stats.interval_seconds must be 10–3600, got %d", c.Stats.IntervalSeconds)
+	}
+	if c.Stats.RetentionHours < 1 || c.Stats.RetentionHours > 720 {
+		return fmt.Errorf("stats.retention_hours must be 1–720, got %d", c.Stats.RetentionHours)
+	}
+	if c.Stats.ChartMinutes < 1 || c.Stats.ChartMinutes > 1440 {
+		return fmt.Errorf("stats.chart_minutes must be 1–1440, got %d", c.Stats.ChartMinutes)
 	}
 	if c.Cache.CDNURLRepairRetries != nil {
 		r := *c.Cache.CDNURLRepairRetries
@@ -266,6 +279,16 @@ func validate(c *Config) error {
 		return fmt.Errorf("throttle.requests_per_minute must be 10–1000, got %d", c.Throttle.RequestsPerMinute)
 	}
 	return nil
+}
+
+// ParseFormat validates a logging format string.
+func ParseFormat(s string) error {
+	switch strings.ToLower(s) {
+	case "text", "json":
+		return nil
+	default:
+		return fmt.Errorf("invalid format %q: must be text or json", s)
+	}
 }
 
 // ParseLevel converts a string log level to slog.Level.

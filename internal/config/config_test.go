@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -179,6 +180,157 @@ func TestLoadInvalidLevel(t *testing.T) {
 	_, err := Load(tmp)
 	if err == nil {
 		t.Fatal("expected error for invalid logging level, got nil")
+	}
+}
+
+func TestParseFormat(t *testing.T) {
+	tests := []struct {
+		input string
+		valid bool
+	}{
+		{"text", true},
+		{"json", true},
+		{"TEXT", true},
+		{"Json", true},
+		{"", false},
+		{"blah", false},
+		{"xml", false},
+	}
+
+	for _, tt := range tests {
+		err := ParseFormat(tt.input)
+		if tt.valid && err != nil {
+			t.Errorf("ParseFormat(%q): unexpected error: %v", tt.input, err)
+		}
+		if !tt.valid && err == nil {
+			t.Errorf("ParseFormat(%q): expected error, got nil", tt.input)
+		}
+	}
+}
+
+func TestLoadInvalidFormat(t *testing.T) {
+	content := []byte("torbox:\n  api_key: \"key\"\nlogging:\n  format: \"xml\"\n")
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for invalid logging format, got nil")
+	}
+}
+
+func TestLoadInvalidCDNURLTTL(t *testing.T) {
+	tests := []struct {
+		name  string
+		value int
+	}{
+		{"negative", -100},
+		{"too_high", 2000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := fmt.Sprintf("torbox:\n  api_key: \"key\"\ncache:\n  cdn_url_ttl_minutes: %d\n", tt.value)
+			tmp := t.TempDir() + "/config.yml"
+			if err := os.WriteFile(tmp, []byte(yaml), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := Load(tmp)
+			if err == nil {
+				t.Errorf("expected error for cdn_url_ttl_minutes=%d, got nil", tt.value)
+			}
+		})
+	}
+}
+
+func TestLoadInvalidRequestsPerMinute(t *testing.T) {
+	tests := []struct {
+		name  string
+		value int
+	}{
+		{"negative", -5},
+		{"too_high", 5000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := fmt.Sprintf("torbox:\n  api_key: \"key\"\nthrottle:\n  requests_per_minute: %d\n", tt.value)
+			tmp := t.TempDir() + "/config.yml"
+			if err := os.WriteFile(tmp, []byte(yaml), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := Load(tmp)
+			if err == nil {
+				t.Errorf("expected error for requests_per_minute=%d, got nil", tt.value)
+			}
+		})
+	}
+}
+
+func TestLoadInvalidSyncInterval(t *testing.T) {
+	yaml := "torbox:\n  api_key: \"key\"\nsync:\n  interval_minutes: -1"
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for negative sync interval, got nil")
+	}
+}
+
+func TestLoadInvalidSyncLimit(t *testing.T) {
+	yaml := "torbox:\n  api_key: \"key\"\nsync:\n  limit: 200000"
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for oversized sync limit, got nil")
+	}
+}
+
+func TestLoadInvalidStatsInterval(t *testing.T) {
+	yaml := "torbox:\n  api_key: \"key\"\nstats:\n  interval_seconds: 5"
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for too-small stats interval, got nil")
+	}
+}
+
+func TestLoadInvalidRetentionHours(t *testing.T) {
+	yaml := "torbox:\n  api_key: \"key\"\nstats:\n  retention_hours: -1"
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for negative retention hours, got nil")
+	}
+}
+
+func TestLoadInvalidChartMinutes(t *testing.T) {
+	yaml := "torbox:\n  api_key: \"key\"\nstats:\n  chart_minutes: -1"
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for negative chart minutes, got nil")
 	}
 }
 

@@ -20,7 +20,7 @@ cache:
   # How long to cache CDN download URLs (in minutes).
   # TorBox CDN URLs expire after a few hours. Setting this too high
   # will serve stale URLs and cause 404 errors.
-  # Default: 120
+  # Must be 1–1440 (1 minute to 24 hours). Default: 120
   # cdn_url_ttl_minutes: 120
 
   # Automatically repair stale CDN URLs when a 404 is detected during proxy.
@@ -92,25 +92,25 @@ logging:
 
 sync:
   # How often to sync metadata from TorBox (in minutes).
-  # Default: 5
+  # Must be 1–1440. Default: 5
   # interval_minutes: 5
 
   # Maximum number of files to fetch per sync cycle.
-  # Default: 5000
+  # Must be 1–100000. Default: 5000
   # limit: 5000
 
 stats:
   # How often to record time-series stats snapshots (in seconds).
   # Snapshots include API call counts, memory usage, cache stats, etc.
   # These are displayed as sparkline charts on the landing page.
-  # Default: 60
+  # Must be 10–3600. Default: 60
   # interval_seconds: 60
 
   # How long to retain stats rows (in hours).
   # Older rows are automatically pruned during each stats interval.
-  # Default: 24
+  # Must be 1–720 (1 hour to 30 days). Default: 24
   # retention_hours: 24
 
   # How far back the landing page sparkline chart shows (in minutes).
-  # Default: 60
+  # Must be 1–1440. Default: 60
   # chart_minutes: 60
