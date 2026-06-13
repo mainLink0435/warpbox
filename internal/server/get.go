@@ -264,7 +264,10 @@ func (s *Server) streamFileContent(w http.ResponseWriter, r *http.Request, file 
 		s.ReleaseCDNConn()
 
 		if copyErr != nil {
-			slog.Error("GET: error streaming CDN data",
+			// context canceled / broken pipe / connection reset are normal
+			// client-side disconnects (Plex seeking, buffering, switching
+			// streams). Only show at DEBUG level — they're not actionable.
+			slog.Debug("GET: error streaming CDN data",
 				"path", file.Path,
 				"written", written,
 				"error", copyErr,
@@ -598,7 +601,7 @@ func (s *Server) handleGetCDNHang(w http.ResponseWriter, r *http.Request, file *
 	// Stream CDN data directly to the client.
 	written, copyErr := io.Copy(w, proxyResp.Body)
 	if copyErr != nil {
-		slog.Error("GET (hang): error streaming CDN data", "path", file.Path, "written", written, "error", copyErr)
+		slog.Debug("GET (hang): error streaming CDN data", "path", file.Path, "written", written, "error", copyErr)
 	}
 
 	slog.Debug("GET (hang): finished streaming", "path", file.Path, "bytes", written)
