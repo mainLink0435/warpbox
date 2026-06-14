@@ -139,6 +139,20 @@ This page documents all significant architectural and technical decisions made d
 - **Outcome:** Implementation in `internal/server/get.go` `handleGet`.
 - **Issue:** #64
 
+## D-018: Batch SQLite prune deletes + retry SetCDNURL to prevent "database is locked"
+
+- **Date:** 2026-06-14
+- **Context:** Production logs showed intermittent "database is locked" errors on `SetCDNURL` after CDN URL fetch. Two occurrences observed in a 24-hour window.
+- **Decision:**
+  1. Batch `PruneBySyncTag` into 250-row LIMIT subqueries instead of one bulk DELETE.
+  2. Add retry loop in `SetCDNURL` (3 attempts, 100/200/400ms exponential backoff).
+  3. Add duration timing (`slog.Debug`) to all write methods for observability.
+  4. Add `db_lock_errors` atomic counter surfaced in periodic memory stats log.
+- **Rationale:** `PruneBySyncTag` held the SQLite writer lock for the entire bulk DELETE. In WAL mode, `_busy_timeout=5000` gave concurrent `SetCDNURL` calls a 5-second wait, but large deletes could exceed that. Batching releases the lock between batches. Retry adds belt-and-suspenders. Diagnostics let us track remaining lock errors without grepping logs.
+- **Implementation:** `internal/metadata/store.go` and `cmd/warpbox/main.go` — no schema changes, no new config keys.
+- **Issue:** #100
+- **Outcome:** All 19 metadata tests pass. Committed as 2442ec4.
+
 ## D-014: Python web session for project board operations
 
 - **Date:** 2026-06-11
