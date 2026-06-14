@@ -44,7 +44,6 @@ type LandingData struct {
 	InfuseURL            string
 	LogsURL              string
 	AllocMB              uint64
-	TotalAllocMB         uint64
 	SysMB                uint64
 	NumGC                uint64
 	HeapObjects          uint64
@@ -64,6 +63,7 @@ type LandingData struct {
 	APIBad               bool   // true if there's a sync error to highlight
 	NegativeCacheSize    int    // Current entries in the negative cache
 	CircuitBreakerSize   int    // Current entries in the circuit breaker
+	DBLockErrors         int64
 
 	// Cache config fields
 	CDNURLAutoRepair     string // "on" or "off"
@@ -77,7 +77,6 @@ type LandingData struct {
 	NegCacheMaxEntries   int
 	CbMaxEntries         int
 	CleanupInterval      int    // in seconds
-	MemStatsInterval     int    // in minutes
 	MaxCDNConnections    int
 
 	// Sync config fields
@@ -161,27 +160,27 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		HTTPURL:             "/http/",
 		InfuseURL:           "/infuse/",
 		LogsURL:             "/logs/",
-		AllocMB:             mem.Alloc / 1024 / 1024,
-		TotalAllocMB:        mem.TotalAlloc / 1024 / 1024,
-		SysMB:               mem.Sys / 1024 / 1024,
-		NumGC:               uint64(mem.NumGC),
-		HeapObjects:         mem.HeapObjects,
-		ListenAddr:          s.cfg.ListenAddr,
-		WebDAVRoot:          s.cfg.WebDAVRoot,
-		CDNURLTTLMinutes:    s.cfg.CDNTtlMinutes,
-		RequestsPerMinute:   s.cfg.RequestsPerMinute,
-		SyncIntervalMinutes: s.cfg.SyncIntervalMinute,
-		LogFormat:           s.cfg.LogFormat,
-		LogLevel:            s.cfg.LogLevel,
-		APICallsTotal:       throttleStats.TotalCalls,
-		APISuccessfulCalls:  throttleStats.SuccessfulCalls,
-		APIFailedCalls:      throttleStats.FailedCalls,
-		APICallsLastMinute:  throttleStats.CallsLastMinute,
-		LastSyncTime:        lastSyncTime,
-		LastSyncError:       lastSyncErr,
-		APIBad:              apiBad,
-		NegativeCacheSize:   negCacheSize,
-		CircuitBreakerSize:  cbSize,
+		AllocMB:              mem.Alloc / 1024 / 1024,
+		SysMB:                mem.Sys / 1024 / 1024,
+		NumGC:                uint64(mem.NumGC),
+		HeapObjects:          mem.HeapObjects,
+		ListenAddr:           s.cfg.ListenAddr,
+		WebDAVRoot:           s.cfg.WebDAVRoot,
+		CDNURLTTLMinutes:     s.cfg.CDNTtlMinutes,
+		RequestsPerMinute:    s.cfg.RequestsPerMinute,
+		SyncIntervalMinutes:  s.cfg.SyncIntervalMinute,
+		LogFormat:            s.cfg.LogFormat,
+		LogLevel:             s.cfg.LogLevel,
+		APICallsTotal:        throttleStats.TotalCalls,
+		APISuccessfulCalls:   throttleStats.SuccessfulCalls,
+		APIFailedCalls:       throttleStats.FailedCalls,
+		APICallsLastMinute:   throttleStats.CallsLastMinute,
+		LastSyncTime:         lastSyncTime,
+		LastSyncError:        lastSyncErr,
+		APIBad:               apiBad,
+		NegativeCacheSize:    negCacheSize,
+		CircuitBreakerSize:   cbSize,
+		DBLockErrors:         s.store.DBLockErrors(),
 
 		// Cache config
 		CDNURLAutoRepair:     autoRepair,
@@ -195,7 +194,6 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		NegCacheMaxEntries:   s.cfg.NegativeCacheMaxEntries,
 		CbMaxEntries:         s.cfg.CircuitBreakerMaxEntries,
 		CleanupInterval:      s.cfg.CleanupIntervalSeconds,
-		MemStatsInterval:     0, // not in server.Config; display "—"
 		MaxCDNConnections:    s.cfg.MaxCDNConnections,
 
 		// Sync config

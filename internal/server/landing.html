@@ -199,10 +199,10 @@
   <table>
     <tr><th colspan="2">Memory</th></tr>
     <tr><td>Allocated</td><td>{{.AllocMB}} MB</td></tr>
-    <tr><td>Total allocated</td><td>{{.TotalAllocMB}} MB</td></tr>
     <tr><td>System memory</td><td>{{.SysMB}} MB</td></tr>
     <tr><td>Heap objects</td><td>{{.HeapObjects}}</td></tr>
     <tr><td>GC cycles</td><td>{{.NumGC}}</td></tr>
+    <tr><td>DB lock errors</td><td>{{.DBLockErrors}}</td></tr>
   </table>
 
   <table>
@@ -225,7 +225,6 @@
     <tr><td>Breaker stale</td><td>{{.CircuitBreakerStale}} min</td></tr>
     <tr><td>Breaker max entries</td><td>{{.CbMaxEntries}}</td></tr>
     <tr><td>Cleanup interval</td><td>{{.CleanupInterval}} s</td></tr>
-    <tr><td>Memory stats interval</td><td>{{if eq .MemStatsInterval 0}}—{{else}}{{.MemStatsInterval}} min{{end}}</td></tr>
     <tr><td>Max CDN connections</td><td>{{.MaxCDNConnections}}</td></tr>
     <tr><td>Negative cache</td><td>{{.NegativeCacheSize}} entries</td></tr>
     <tr><td>Circuit breaker</td><td>{{.CircuitBreakerSize}} entries</td></tr>
@@ -336,11 +335,13 @@
     success: '#22c55e',
     failed: '#f87171',
     '429s': '#fbbf24',
-    'total alloc': '#a78bfa',
     'sys mem': '#38bdf8',
     'alloc': '#2dd4bf',
     'neg cache': '#c084fc',
     'breaker': '#e879f9',
+    'gc cycles': '#a78bfa',
+    'heap objects': '#f97316',
+    'db locks': '#ec4899',
   };
 
   // Metric definitions: label, dbKey, unit, color
@@ -348,9 +349,11 @@
     { label: 'success',     key: 'api_calls_success',      unit: '',   color: COLORS.success },
     { label: 'failed',      key: 'api_calls_failed',       unit: '',   color: COLORS.failed },
     { label: '429s',        key: 'api_calls_429',          unit: '',   color: COLORS['429s'] },
-    { label: 'total alloc', key: 'total_alloc_mb',          unit: 'MB', color: COLORS['total alloc'] },
     { label: 'sys mem',     key: 'sys_mb',                 unit: 'MB', color: COLORS['sys mem'] },
     { label: 'alloc',       key: 'alloc_mb',                unit: 'MB', color: COLORS.alloc },
+    { label: 'gc cycles',   key: 'gc_cycles',              unit: '',   color: COLORS['gc cycles'] },
+    { label: 'heap objects',key: 'heap_objects',           unit: '',   color: COLORS['heap objects'] },
+    { label: 'db locks',    key: 'db_lock_errors',          unit: '',   color: COLORS['db locks'] },
     { label: 'neg cache',   key: 'negative_cache_entries', unit: '',   color: COLORS['neg cache'] },
     { label: 'breaker',     key: 'circuit_breaker_entries',unit: '',   color: COLORS.breaker },
   ];

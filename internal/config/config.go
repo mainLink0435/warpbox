@@ -44,7 +44,6 @@ type CacheConfig struct {
 	NegativeCacheMaxEntries   *int `yaml:"negative_cache_max_entries"`   // Max entries in negative cache; nil→default 5000
 	CircuitBreakerMaxEntries  *int `yaml:"circuit_breaker_max_entries"`  // Max entries in circuit breaker; nil→default 2000
 	CleanupIntervalSeconds    *int `yaml:"cleanup_interval_seconds"`     // Sweep interval; nil→default 60
-	MemoryStatsIntervalMin    *int `yaml:"memory_stats_interval_minutes"` // Memory logging interval; nil→default 5
 
 	// CDN proxy settings.
 	MaxCDNConnections *int `yaml:"max_cdn_connections"` // Max concurrent CDN proxy connections; nil→default 8
@@ -164,10 +163,6 @@ func setDefaults(c *Config) {
 		n := 60
 		c.Cache.CleanupIntervalSeconds = &n
 	}
-	if c.Cache.MemoryStatsIntervalMin == nil {
-		n := 5
-		c.Cache.MemoryStatsIntervalMin = &n
-	}
 	if c.Cache.MaxCDNConnections == nil {
 		n := 8
 		c.Cache.MaxCDNConnections = &n
@@ -261,12 +256,6 @@ func validate(c *Config) error {
 		r := *c.Cache.CleanupIntervalSeconds
 		if r < 10 || r > 3600 {
 			return fmt.Errorf("cache.cleanup_interval_seconds must be 10–3600, got %d", r)
-		}
-	}
-	if c.Cache.MemoryStatsIntervalMin != nil {
-		r := *c.Cache.MemoryStatsIntervalMin
-		if r < 1 || r > 60 {
-			return fmt.Errorf("cache.memory_stats_interval_minutes must be 1–60, got %d", r)
 		}
 	}
 	if c.Cache.MaxCDNConnections != nil {

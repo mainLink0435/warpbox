@@ -170,6 +170,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Docker login as ci-bot not ben
 
+## [Unreleased]
+
+### Changed
+- Consolidate all health/metrics collection into a single DB-backed source of truth — remove redundant 5-minute memory stats log ticker (`cache.memory_stats_interval_minutes` config key removed), closes #98
+- Drop misleading "total allocated" (cumulative odometer) from landing page and chart — add `gc_cycles`, `heap_objects`, and `db_lock_errors` charts instead, closes #99
+
 [Unreleased]: https://REDACTED/ben/warpbox/compare/v0.4.0...HEAD
 [v0.4.0]: https://REDACTED/ben/warpbox/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://REDACTED/ben/warpbox/compare/v0.3.0...v0.3.1

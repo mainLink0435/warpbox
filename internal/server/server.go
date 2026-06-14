@@ -79,7 +79,7 @@ type Server struct {
 	prevSuccessfulCalls int64
 	prevFailedCalls     int64
 	prev429Calls        int64
-	prevTotalAlloc      uint64
+	prevDBLockErrors    int64
 
 	// TorBox user info (refreshed periodically).
 	torboxUserInfo   *torbox.UserInfo
@@ -215,8 +215,9 @@ func (s *Server) startCleanupLoop() {
 }
 
 // recordStats snapshots current metrics and writes them to the stats table.
-// Counter metrics (success/fail/429/total_alloc) are recorded as per-interval
-// deltas so charts show rate, not cumulative totals.
+// Counter metrics (success/fail/429/db_lock_errors) are recorded as per-interval
+// deltas so charts show rate, not cumulative totals. Gauge metrics (sys_mb,
+// alloc_mb, gc_cycles, heap_objects, cache sizes) are point-in-time snapshots.
 func (s *Server) recordStats() {
 	throttleStats := s.queue.Stats()
 
@@ -227,24 +228,27 @@ func (s *Server) recordStats() {
 	dSuccess := throttleStats.SuccessfulCalls - s.prevSuccessfulCalls
 	dFailed := throttleStats.FailedCalls - s.prevFailedCalls
 	d429 := throttleStats.HTTP429Calls - s.prev429Calls
-	dTotalAlloc := mem.TotalAlloc - s.prevTotalAlloc
+	lockErrors := s.store.DBLockErrors()
+	dLockErrors := lockErrors - s.prevDBLockErrors
 
 	// Update prev values for next interval.
 	s.prevSuccessfulCalls = throttleStats.SuccessfulCalls
 	s.prevFailedCalls = throttleStats.FailedCalls
 	s.prev429Calls = throttleStats.HTTP429Calls
-	s.prevTotalAlloc = mem.TotalAlloc
+	s.prevDBLockErrors = lockErrors
 
 	metrics := map[string]float64{
 		// Per-interval deltas.
 		"api_calls_success": float64(dSuccess),
 		"api_calls_failed":  float64(dFailed),
 		"api_calls_429":     float64(d429),
-		"total_alloc_mb":    float64(dTotalAlloc / 1024 / 1024),
+		"db_lock_errors":    float64(dLockErrors),
 
 		// Gauges — point-in-time values, not deltas.
 		"sys_mb":                  float64(mem.Sys / 1024 / 1024),
 		"alloc_mb":                float64(mem.Alloc / 1024 / 1024),
+		"gc_cycles":               float64(mem.NumGC),
+		"heap_objects":            float64(mem.HeapObjects),
 		"negative_cache_entries":  float64(s.NegativeCacheSize()),
 		"circuit_breaker_entries": float64(s.CircuitBreakerSize()),
 	}

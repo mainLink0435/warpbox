@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"syscall"
 	"time"
 
@@ -176,30 +175,6 @@ func main() {
 	go func() {
 		if err := srv.Start(ctx); err != nil {
 			serverErr <- err
-		}
-	}()
-
-	memStatsInterval := time.Duration(*cfg.Cache.MemoryStatsIntervalMin) * time.Minute
-	go func() {
-		memTicker := time.NewTicker(memStatsInterval)
-		defer memTicker.Stop()
-		for {
-			select {
-			case <-memTicker.C:
-				var mem runtime.MemStats
-				runtime.ReadMemStats(&mem)
-				slog.Info("memory stats",
-					"alloc_mb", mem.Alloc/(1024*1024),
-					"total_alloc_mb", mem.TotalAlloc/(1024*1024),
-					"sys_mb", mem.Sys/(1024*1024),
-					"gc_cycles", mem.NumGC,
-					"heap_objects", mem.HeapObjects,
-					"negative_cache", srv.NegativeCacheSize(),
-					"circuit_breaker", srv.CircuitBreakerSize(),
-				)
-			case <-ctx.Done():
-				return
-			}
 		}
 	}()
 

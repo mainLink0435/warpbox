@@ -66,9 +66,6 @@ cache:
   # How often to sweep expired cache entries (in seconds). Must be 10–3600.
   # Default: 60
   # cleanup_interval_seconds: 60
-  # How often to log memory stats (in minutes). Must be 1–60.
-  # Default: 5
-  # memory_stats_interval_minutes: 5
 
   # Maximum concurrent CDN proxy connections.
   # Default: 8
