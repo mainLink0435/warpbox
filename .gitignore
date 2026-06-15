@@ -38,3 +38,6 @@ reports/
 # OS
 .DS_Store
 Thumbs.db
+
+# Sensitive credentials (keep local only — use .template for structure)
+docs/auth-matrix.md
