@@ -19,9 +19,8 @@ type TorBoxConfig struct {
 
 // ServerConfig holds the WebDAV server settings.
 type ServerConfig struct {
-	ListenAddr   string `yaml:"listen_addr"`   // Default: ":8080"
-	WebDAVRoot   string `yaml:"webdav_root"`   // Default: "/webdav"
-	EnablePprof  bool   `yaml:"enable_pprof"`  // Enable /debug/pprof/; default false
+	ListenAddr  string `yaml:"listen_addr"`  // Default: ":8080"
+	EnablePprof bool  `yaml:"enable_pprof"` // Enable /debug/pprof/; default false
 }
 
 // CacheConfig holds caching and CDN proxy parameters.
@@ -75,12 +74,12 @@ type StatsConfig struct {
 	ChartMinutes    int `yaml:"chart_minutes"`    // How far back the landing page chart shows; default 60
 }
 
-// VirtualPathConfig holds a single virtual WebDAV mount with its filters.
+// VirtualPathConfig holds a single virtual path with its filters.
 type VirtualPathConfig struct {
-	Mount            string `yaml:"mount"`             // WebDAV mount path, e.g. "/movies"
-	DirectoryRegex   string `yaml:"directory_regex"`   // Regex applied to torrent directory names
-	FileRegex        string `yaml:"file_regex"`        // Regex applied to file paths within torrents
-	LargestFileOnly  bool   `yaml:"largest_file_only"` // Show only the largest file per torrent
+	Name            string `yaml:"name"`              // Virtual directory name, e.g. "movies"
+	DirectoryRegex  string `yaml:"directory_regex"`   // Regex applied to torrent directory names
+	FileRegex       string `yaml:"file_regex"`        // Regex applied to file paths within torrents
+	LargestFileOnly bool   `yaml:"largest_file_only"` // Show only the largest file per torrent
 }
 
 // LibraryConfig holds settings for the virtual library feature.
@@ -115,9 +114,6 @@ type Config struct {
 func setDefaults(c *Config) {
 	if c.Server.ListenAddr == "" {
 		c.Server.ListenAddr = ":1412"
-	}
-	if c.Server.WebDAVRoot == "" {
-		c.Server.WebDAVRoot = "/webdav"
 	}
 	if c.Cache.CDNURLTTLMinutes == 0 {
 		c.Cache.CDNURLTTLMinutes = 120
@@ -312,19 +308,20 @@ func validate(c *Config) error {
 func validateLibrary(l *LibraryConfig) error {
 	seen := make(map[string]bool)
 	for i, vp := range l.VirtualPaths {
-		if vp.Mount == "" {
-			return fmt.Errorf("library.virtual_paths[%d].mount is required", i)
+		name := vp.Name
+		if name == "" {
+			return fmt.Errorf("library.virtual_paths[%d].name is required", i)
 		}
-		if !strings.HasPrefix(vp.Mount, "/") {
-			return fmt.Errorf("library.virtual_paths[%d].mount must start with '/', got %q", i, vp.Mount)
+		if strings.Contains(name, "/") {
+			return fmt.Errorf("library.virtual_paths[%d].name must not contain '/', got %q", i, name)
 		}
-		if vp.Mount == "/" {
-			return fmt.Errorf("library.virtual_paths[%d].mount cannot be '/', use '/webdav' or '__all__'", i)
+		if name == "__all__" {
+			return fmt.Errorf("library.virtual_paths[%d].name %q is reserved", i, name)
 		}
-		if seen[vp.Mount] {
-			return fmt.Errorf("library.virtual_paths[%d].mount %q is duplicated", i, vp.Mount)
+		if seen[name] {
+			return fmt.Errorf("library.virtual_paths[%d].name %q is duplicated", i, name)
 		}
-		seen[vp.Mount] = true
+		seen[name] = true
 
 		if vp.DirectoryRegex != "" {
 			if _, err := regexp.Compile(vp.DirectoryRegex); err != nil {

@@ -16,7 +16,7 @@ func TestHandleHealthzHealthy(t *testing.T) {
 	}
 	defer store.Close()
 
-	srv := New(Config{Version: "test", WebDAVRoot: "/webdav"}, store, nil, nil)
+	srv := New(Config{Version: "test"}, store, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
@@ -46,7 +46,7 @@ func TestHandleHealthzUnhealthy(t *testing.T) {
 	}
 	store.Close()
 
-	srv := New(Config{Version: "test", WebDAVRoot: "/webdav"}, store, nil, nil)
+	srv := New(Config{Version: "test"}, store, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()

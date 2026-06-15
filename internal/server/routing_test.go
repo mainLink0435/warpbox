@@ -16,10 +16,11 @@ func testServer(t *testing.T, overrides ...Config) *Server {
 	}
 	t.Cleanup(func() { store.Close() })
 
-	cfg := Config{Version: "test", WebDAVRoot: "/webdav"}
+	cfg := Config{Version: "test"}
 	if len(overrides) > 0 {
 		cfg = overrides[0]
 	}
+	// root is always /webdav — handled by Server.New()
 
 	queue := throttle.NewQueue(600)
 	return New(cfg, store, nil, queue)
@@ -172,7 +173,7 @@ func TestRouteInfuseRewrite(t *testing.T) {
 }
 
 func TestRoutePprofDisabled(t *testing.T) {
-	srv := testServer(t, Config{Version: "test", WebDAVRoot: "/webdav", EnablePprof: false})
+	srv := testServer(t, Config{Version: "test", EnablePprof: false})
 
 	r := httptest.NewRequest(http.MethodGet, "/debug/pprof/heap", nil)
 	w := httptest.NewRecorder()
@@ -186,7 +187,7 @@ func TestRoutePprofDisabled(t *testing.T) {
 }
 
 func TestRoutePprofEnabled(t *testing.T) {
-	srv := testServer(t, Config{Version: "test", WebDAVRoot: "/webdav", EnablePprof: true})
+	srv := testServer(t, Config{Version: "test", EnablePprof: true})
 
 	// Verify exact path works (pprof handler may redirect).
 	t.Run("exact", func(t *testing.T) {

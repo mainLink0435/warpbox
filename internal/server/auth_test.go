@@ -23,7 +23,7 @@ func TestRequireAuthDisabled(t *testing.T) {
 	}
 	defer store.Close()
 
-	srv := New(Config{Version: "test", WebDAVRoot: "/webdav", AuthEnabled: false}, store, nil, nil)
+	srv := New(Config{Version: "test",  AuthEnabled: false}, store, nil, nil)
 
 	handler := srv.requireAuth(testHandler)
 
@@ -46,7 +46,7 @@ func TestRequireAuthNoCredentials(t *testing.T) {
 	}
 	defer store.Close()
 
-	srv := New(Config{Version: "test", WebDAVRoot: "/webdav", AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, nil)
+	srv := New(Config{Version: "test",  AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, nil)
 
 	handler := srv.requireAuth(testHandler)
 
@@ -73,7 +73,7 @@ func TestRequireAuthWrongPassword(t *testing.T) {
 	}
 	defer store.Close()
 
-	srv := New(Config{Version: "test", WebDAVRoot: "/webdav", AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, nil)
+	srv := New(Config{Version: "test",  AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, nil)
 
 	handler := srv.requireAuth(testHandler)
 
@@ -97,7 +97,7 @@ func TestRequireAuthValidCredentials(t *testing.T) {
 	}
 	defer store.Close()
 
-	srv := New(Config{Version: "test", WebDAVRoot: "/webdav", AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, nil)
+	srv := New(Config{Version: "test",  AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, nil)
 
 	handler := srv.requireAuth(testHandler)
 
@@ -121,7 +121,7 @@ func TestRequireAuthHealthzExempt(t *testing.T) {
 	}
 	defer store.Close()
 
-	srv := New(Config{Version: "test", WebDAVRoot: "/webdav", AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, nil)
+	srv := New(Config{Version: "test",  AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
@@ -151,7 +151,7 @@ func TestRequireAuthLandingProtected(t *testing.T) {
 	defer store.Close()
 
 	queue := throttle.NewQueue(250)
-	srv := New(Config{Version: "test", WebDAVRoot: "/webdav", AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, queue)
+	srv := New(Config{Version: "test",  AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, queue)
 
 	handler := srv.requireAuth(srv.handleLanding)
 
@@ -175,7 +175,7 @@ func TestRequireAuthLandingWithCredentials(t *testing.T) {
 	defer store.Close()
 
 	queue := throttle.NewQueue(250)
-	srv := New(Config{Version: "test", WebDAVRoot: "/webdav", AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, queue)
+	srv := New(Config{Version: "test",  AuthEnabled: true, AuthUsername: "admin", AuthPassword: "secret"}, store, nil, queue)
 
 	handler := srv.requireAuth(srv.handleLanding)
 

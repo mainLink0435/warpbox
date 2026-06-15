@@ -72,7 +72,6 @@ torbox:
 
 server:
   listen_addr: "127.0.0.1:9000"
-  webdav_root: "/files"
 
 cache:
   cdn_url_ttl_minutes: 240
@@ -101,9 +100,6 @@ sync:
 	}
 	if cfg.Server.ListenAddr != "127.0.0.1:9000" {
 		t.Errorf("listen_addr = %q", cfg.Server.ListenAddr)
-	}
-	if cfg.Server.WebDAVRoot != "/files" {
-		t.Errorf("webdav_root = %q", cfg.Server.WebDAVRoot)
 	}
 	if cfg.Cache.CDNURLTTLMinutes != 240 {
 		t.Errorf("cdn_url_ttl_minutes = %d", cfg.Cache.CDNURLTTLMinutes)
@@ -417,11 +413,11 @@ torbox:
   api_key: "test-key"
 library:
   virtual_paths:
-    - mount: "/movies"
+    - name: "movies"
       directory_regex: "(?i)(19|20)([0-9]{2})"
       file_regex: ".*\\.(mkv|mp4|avi)$"
       largest_file_only: true
-    - mount: "/tv"
+    - name: "tv"
       directory_regex: "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)"
       file_regex: ".*\\.(mkv|mp4|avi)$"
       largest_file_only: false
@@ -441,14 +437,14 @@ library:
 	if len(cfg.Library.VirtualPaths) != 2 {
 		t.Fatalf("expected 2 virtual paths, got %d", len(cfg.Library.VirtualPaths))
 	}
-	if cfg.Library.VirtualPaths[0].Mount != "/movies" {
-		t.Errorf("mount[0] = %q, want /movies", cfg.Library.VirtualPaths[0].Mount)
+	if cfg.Library.VirtualPaths[0].Name != "movies" {
+		t.Errorf("name[0] = %q, want movies", cfg.Library.VirtualPaths[0].Name)
 	}
 	if !cfg.Library.VirtualPaths[0].LargestFileOnly {
 		t.Error("largest_file_only[0] should be true")
 	}
-	if cfg.Library.VirtualPaths[1].Mount != "/tv" {
-		t.Errorf("mount[1] = %q, want /tv", cfg.Library.VirtualPaths[1].Mount)
+	if cfg.Library.VirtualPaths[1].Name != "tv" {
+		t.Errorf("name[1] = %q, want tv", cfg.Library.VirtualPaths[1].Name)
 	}
 	if cfg.Library.OnItemsAdded != "sh /path/to/script.sh" {
 		t.Errorf("on_items_added = %q", cfg.Library.OnItemsAdded)
@@ -464,7 +460,7 @@ torbox:
   api_key: "test-key"
 library:
   virtual_paths:
-    - mount: "/movies"
+    - name: "movies"
       directory_regex: "[invalid"
 `)
 	tmp := t.TempDir() + "/config.yml"
@@ -483,7 +479,7 @@ torbox:
   api_key: "test-key"
 library:
   virtual_paths:
-    - mount: "/movies"
+    - name: "movies"
       file_regex: "[invalid"
 `)
 	tmp := t.TempDir() + "/config.yml"
@@ -502,9 +498,9 @@ torbox:
   api_key: "test-key"
 library:
   virtual_paths:
-    - mount: "/movies"
+    - name: "movies"
       directory_regex: "(?i)1999"
-    - mount: "/movies"
+    - name: "movies"
       directory_regex: "(?i)2000"
 `)
 	tmp := t.TempDir() + "/config.yml"
@@ -513,7 +509,7 @@ library:
 	}
 	_, err := Load(tmp)
 	if err == nil {
-		t.Fatal("expected error for duplicate mount paths")
+		t.Fatal("expected error for duplicate names")
 	}
 }
 
@@ -523,7 +519,7 @@ torbox:
   api_key: "test-key"
 library:
   virtual_paths:
-    - mount: ""
+    - name: ""
 `)
 	tmp := t.TempDir() + "/config.yml"
 	if err := os.WriteFile(tmp, content, 0644); err != nil {
@@ -531,7 +527,7 @@ library:
 	}
 	_, err := Load(tmp)
 	if err == nil {
-		t.Fatal("expected error for empty mount")
+		t.Fatal("expected error for empty name")
 	}
 }
 

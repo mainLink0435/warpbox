@@ -110,20 +110,30 @@ func (s *Server) handlePropfind(w http.ResponseWriter, r *http.Request) {
 
 	// Add immediate children based on depth.
 	if depth == "1" || depth == "infinity" {
-		// Track immediate children of the requested directory.
-		// For each file path, we extract the first path segment after the prefix.
-		// If there are more segments after that, the immediate child is a directory.
-		// If the file is directly in the requested directory, it's a file.
-		type childInfo struct {
-			isDir     bool
-			size      int64
-			name      string
-			mime      string
-			createdAt string
-		}
-		immediate := map[string]childInfo{}
 
-		for _, rec := range records {
+		// At the root level (/webdav/) with virtual paths configured,
+		// show synthetic directory entries instead of real files.
+		_, isInsideMount := r.Context().Value(mountRootKey).(string)
+		if prefix == "" && len(s.virtualFilters) > 0 && !isInsideMount {
+			baseHref := strings.TrimRight(reqPath, "/") + "/"
+			// __all__ is always first.
+			responses = appendResponse(responses, baseHref+"__all__/", true, 0, "", "", "", &seen)
+			for _, vf := range s.virtualFilters {
+				name := strings.TrimPrefix(vf.Mount, "/")
+				responses = appendResponse(responses, baseHref+name+"/", true, 0, "", "", "", &seen)
+			}
+		} else {
+			// Standard directory listing from file records.
+			type childInfo struct {
+				isDir     bool
+				size      int64
+				name      string
+				mime      string
+				createdAt string
+			}
+			immediate := map[string]childInfo{}
+
+			for _, rec := range records {
 			relPath := strings.TrimPrefix(rec.Path, prefix)
 			relPath = strings.TrimPrefix(relPath, "/")
 
@@ -170,7 +180,8 @@ func (s *Server) handlePropfind(w http.ResponseWriter, r *http.Request) {
 				responses = appendResponse(responses, childHref, false, info.size, info.name, info.mime, info.createdAt, &seen)
 			}
 		}
-	}
+		} // close else block
+	} // close depth block
 
 	// Build the XML response.
 	ms := multiStatus{

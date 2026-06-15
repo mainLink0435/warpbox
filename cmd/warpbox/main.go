@@ -93,7 +93,6 @@ func main() {
 	slog.Info("starting warpbox",
 		"version", Version,
 		"listen_addr", cfg.Server.ListenAddr,
-		"webdav_root", cfg.Server.WebDAVRoot,
 		"log_format", cfg.Logging.Format,
 		"log_level", cfg.Logging.Level,
 	)
@@ -157,7 +156,6 @@ func main() {
 	// Wire the LevelVar into the server config for runtime log level toggle.
 	serverCfg := server.Config{
 		ListenAddr:              cfg.Server.ListenAddr,
-		WebDAVRoot:              cfg.Server.WebDAVRoot,
 		CDNTtlMinutes:           cfg.Cache.CDNURLTTLMinutes,
 		CDNURLAutoRepair:        *cfg.Cache.CDNURLAutoRepair,
 		CDNURLRepairRetries:     *cfg.Cache.CDNURLRepairRetries,

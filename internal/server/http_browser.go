@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/ben/warpbox/internal/library"
 )
 
 // handleHTTP serves an HTML directory listing at /http/,
@@ -19,13 +21,29 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	// Resolve the virtual path.
 	reqPath := strings.TrimRight(r.URL.Path, "/")
 	if reqPath == "" || strings.Count(reqPath, "/") < 2 {
-		// /http/ or /http — serve root listing.
 		reqPath = "/http/"
 	}
 
-	// Strip the /http prefix to get the virtual path.
-	virtualPath := strings.TrimPrefix(reqPath, "/http")
-	virtualPath = strings.TrimPrefix(virtualPath, "/")
+	rawVirtualPath := strings.TrimPrefix(reqPath, "/http")
+	rawVirtualPath = strings.TrimPrefix(rawVirtualPath, "/")
+
+	// Detect virtual path mounts from the first segment after /http/.
+	firstSeg := rawVirtualPath
+	if idx := strings.IndexByte(rawVirtualPath, '/'); idx >= 0 {
+		firstSeg = rawVirtualPath[:idx]
+	}
+
+	var hFilter *library.Filter
+	var virtualPath = rawVirtualPath
+
+	if firstSeg == "__all__" {
+		virtualPath = strings.TrimPrefix(rawVirtualPath, "__all__")
+		virtualPath = strings.TrimPrefix(virtualPath, "/")
+	} else if f, ok := s.virtualPathMap[firstSeg]; ok {
+		hFilter = f
+		virtualPath = strings.TrimPrefix(rawVirtualPath, firstSeg)
+		virtualPath = strings.TrimPrefix(virtualPath, "/")
+	}
 
 	// Check if this path resolves to a file first.
 	file, err := s.store.GetFileByPath(virtualPath)
@@ -49,8 +67,13 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Apply filter if inside a virtual path.
+	if hFilter != nil {
+		records = hFilter.Apply(records)
+	}
+
 	// Build the breadcrumb trail.
-	parts := strings.Split(virtualPath, "/")
+	parts := strings.Split(rawVirtualPath, "/")
 	var breadcrumbs []breadcrumb
 	breadcrumbs = append(breadcrumbs, breadcrumb{Name: "root", Href: "/http/"})
 	accum := ""
@@ -67,7 +90,15 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	var files []entry
 	seen := map[string]bool{}
 
-	for _, rec := range records {
+	// At the root level with virtual paths configured, show synthetic dirs.
+	if rawVirtualPath == "" && len(s.virtualFilters) > 0 {
+		dirs = append(dirs, entry{Name: "__all__/", Href: "/http/__all__/", Size: 0, IsDir: true})
+		for _, vf := range s.virtualFilters {
+			name := strings.TrimPrefix(vf.Mount, "/")
+			dirs = append(dirs, entry{Name: name + "/", Href: "/http/" + name + "/", Size: 0, IsDir: true})
+		}
+	} else {
+		for _, rec := range records {
 		// Determine the relative path from the current directory.
 		rel := strings.TrimPrefix(rec.Path, virtualPath)
 		rel = strings.TrimPrefix(rel, "/")
@@ -110,14 +141,15 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 			if mime == "" {
 				mime = "application/octet-stream"
 			}
-		fileHref := "/http/" + rec.Path
-		files = append(files, entry{
-			Name:   displayName,
-			Href:   fileHref,
-			Size:   rec.Size,
-			IsDir:  false,
-			Mime:   mime,
-		})
+			fileHref := "/http/" + rec.Path
+			files = append(files, entry{
+				Name:   displayName,
+				Href:   fileHref,
+				Size:   rec.Size,
+				IsDir:  false,
+				Mime:   mime,
+			})
+			}
 		}
 	}
 

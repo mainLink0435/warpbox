@@ -163,7 +163,7 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		NumGC:                uint64(mem.NumGC),
 		HeapObjects:          mem.HeapObjects,
 		ListenAddr:           s.cfg.ListenAddr,
-		WebDAVRoot:           s.cfg.WebDAVRoot,
+		WebDAVRoot:           webdavRoot,
 		CDNURLTTLMinutes:     s.cfg.CDNTtlMinutes,
 		RequestsPerMinute:    s.cfg.RequestsPerMinute,
 		SyncIntervalMinutes:  s.cfg.SyncIntervalMinute,

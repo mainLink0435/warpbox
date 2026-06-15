@@ -31,7 +31,7 @@ func TestServeDirListingRoot(t *testing.T) {
 	}
 
 	// Create a server pointing to the in-memory store.
-	srv := New(Config{WebDAVRoot: "/webdav", Version: "test"}, store, nil, nil)
+	srv := New(Config{Version: "test"}, store, nil, nil)
 
 	// Simulate GET /webdav/
 	req := httptest.NewRequest(http.MethodGet, "/webdav/", nil)
@@ -89,7 +89,7 @@ func TestServeDirListingSubdir(t *testing.T) {
 		}
 	}
 
-	srv := New(Config{WebDAVRoot: "/webdav", Version: "test"}, store, nil, nil)
+	srv := New(Config{Version: "test"}, store, nil, nil)
 
 	// Simulate GET /webdav/Movie.A/ — a subdirectory.
 	req := httptest.NewRequest(http.MethodGet, "/webdav/Movie.A/", nil)
@@ -125,7 +125,7 @@ func TestServeDirListingMissingPath(t *testing.T) {
 	}
 	defer store.Close()
 
-	srv := New(Config{WebDAVRoot: "/webdav", Version: "test"}, store, nil, nil)
+	srv := New(Config{Version: "test"}, store, nil, nil)
 
 	// GET on a path that doesn't exist and has no children.
 	req := httptest.NewRequest(http.MethodGet, "/webdav/nonexistent", nil)
@@ -178,7 +178,7 @@ func TestServeDirListingNestedPaths(t *testing.T) {
 		}
 	}
 
-	srv := New(Config{WebDAVRoot: "/webdav", Version: "test"}, store, nil, nil)
+	srv := New(Config{Version: "test"}, store, nil, nil)
 
 	// --- Test 1: Listing the root should show only the torrent directories ---
 	req := httptest.NewRequest(http.MethodGet, "/webdav/", nil)
@@ -262,7 +262,7 @@ func TestServeDirListingGETRootNoSlash(t *testing.T) {
 		}
 	}
 
-	srv := New(Config{WebDAVRoot: "/webdav", Version: "test"}, store, nil, nil)
+	srv := New(Config{Version: "test"}, store, nil, nil)
 
 	// GET /webdav (without trailing slash) — this is the case the user reported.
 	req := httptest.NewRequest(http.MethodGet, "/webdav", nil)

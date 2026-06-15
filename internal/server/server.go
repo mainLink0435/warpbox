@@ -88,18 +88,21 @@ type Server struct {
 	prevDBLockErrors    int64
 	prevNumGC           uint32
 
-	// Library virtual path filters (nil when not configured).
-	virtualFilters []*library.Filter
+	// Library virtual path filters and lookup map.
+	virtualFilters   []*library.Filter
+	virtualPathMap   map[string]*library.Filter // name → filter for O(1) lookup
 
 	// TorBox user info (refreshed periodically).
 	torboxUserInfo   *torbox.UserInfo
 	torboxUserInfoMu sync.Mutex
 }
 
+// webdavRoot is the canonical WebDAV root path — always "/webdav".
+const webdavRoot = "/webdav"
+
 // Config holds the server-specific configuration.
 type Config struct {
 	ListenAddr         string
-	WebDAVRoot         string
 	CDNTtlMinutes       int  // How long to cache CDN URLs (0 = disable)
 	CDNURLAutoRepair    bool // Auto-repair stale CDN URLs
 	CDNURLRepairRetries int  // Max repair retries per request
@@ -172,7 +175,7 @@ func New(cfg Config, store *metadata.Store, torBox *torbox.Client, queue *thrott
 		store:     store,
 		torBox:    torBox,
 		queue:     queue,
-		root:      cfg.WebDAVRoot,
+		root:      webdavRoot,
 		mux:       chi.NewRouter(),
 		startTime: time.Now(),
 
@@ -186,6 +189,7 @@ func New(cfg Config, store *metadata.Store, torBox *torbox.Client, queue *thrott
 		statsRetention:          time.Duration(cfg.StatsRetentionHours) * time.Hour,
 		statsChartSince:         time.Duration(cfg.StatsChartMinutes) * time.Minute,
 		virtualFilters:          virtualFilters,
+		virtualPathMap:          makeVirtualPathMap(virtualFilters),
 	}
 	// Fill the semaphore so we can Acquire/Release.
 	for i := 0; i < maxConns; i++ {
@@ -199,13 +203,21 @@ func New(cfg Config, store *metadata.Store, torBox *torbox.Client, queue *thrott
 func buildFilters(vps []config.VirtualPathConfig) ([]*library.Filter, error) {
 	filters := make([]*library.Filter, 0, len(vps))
 	for _, vp := range vps {
-		f, err := library.NewFilter(vp.Mount, vp.DirectoryRegex, vp.FileRegex, vp.LargestFileOnly)
+		f, err := library.NewFilter("/"+vp.Name, vp.DirectoryRegex, vp.FileRegex, vp.LargestFileOnly)
 		if err != nil {
-			return nil, fmt.Errorf("building filter for %q: %w", vp.Mount, err)
+			return nil, fmt.Errorf("building filter for %q: %w", vp.Name, err)
 		}
 		filters = append(filters, f)
 	}
 	return filters, nil
+}
+
+func makeVirtualPathMap(filters []*library.Filter) map[string]*library.Filter {
+	m := make(map[string]*library.Filter, len(filters))
+	for _, f := range filters {
+		m[strings.TrimPrefix(f.Mount, "/")] = f
+	}
+	return m
 }
 
 // AcquireCDNConn blocks until a CDN connection slot is available.
@@ -315,29 +327,32 @@ func (s *Server) TorBoxUserInfo() *torbox.UserInfo {
 	return s.torboxUserInfo
 }
 
-// Context keys for passing library filter and mount path through request context.
+// Context keys for passing library filter and mount root through context.
 type filterKeyType struct{}
-type mountKeyType struct{}
+type mountRootKeyType struct{}
 
 var filterKey filterKeyType
-var mountKey mountKeyType
-
-// webdavHandler creates a filtered WebDAV handler for a virtual path mount.
-func (s *Server) webdavHandler(mount string, f *library.Filter) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), filterKey, f)
-		ctx = context.WithValue(ctx, mountKey, mount)
-		s.handleWebDAV(w, r.WithContext(ctx))
-	}
-}
+var mountRootKey mountRootKeyType
 
 // rootForRequest returns the WebDAV root path to use for prefix stripping.
-// Falls back to s.root when no virtual path mount is in context.
+// When inside a virtual path (e.g., /webdav/movies/), returns the full mount
+// path. Falls back to s.root for the unfiltered /webdav/ view.
 func (s *Server) rootForRequest(r *http.Request) string {
-	if mount, ok := r.Context().Value(mountKey).(string); ok && mount != "" {
+	if mount, ok := r.Context().Value(mountRootKey).(string); ok && mount != "" {
 		return mount
 	}
 	return s.root
+}
+
+// virtualPathName returns the first path segment after /webdav/ or empty string.
+// e.g. "/webdav/movies/file" → "movies", "/webdav/" → ""
+func virtualPathName(path string) string {
+	p := strings.TrimPrefix(path, webdavRoot)
+	p = strings.TrimPrefix(p, "/")
+	if idx := strings.IndexByte(p, '/'); idx >= 0 {
+		return p[:idx]
+	}
+	return p
 }
 
 // StopCleanup stops the periodic cleanup goroutine. Intended for tests.
@@ -460,6 +475,34 @@ func (s *Server) handleWebDAV(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/infuse") {
 		r.URL.Path = strings.Replace(r.URL.Path, "/infuse", s.root, 1)
 	}
+
+	// Detect virtual path mounts from the first path segment.
+	vpName := virtualPathName(r.URL.Path)
+	var cfilter *library.Filter
+	var croot string
+	if vpName == "__all__" {
+		// Unfiltered view — strip __all__ from the path root.
+		croot = s.root + "/__all__"
+	} else if f, ok := s.virtualPathMap[vpName]; ok {
+		// Registered virtual path — apply filter and set root to mount path.
+		cfilter = f
+		croot = s.root + "/" + vpName
+	} else if len(s.virtualFilters) > 0 && vpName == "" {
+		// Root of /webdav/ with virtual paths configured — show synthetic dirs.
+		// No context values needed; handlePropfind/serveDirListing detect this.
+	}
+
+	if croot != "" || cfilter != nil {
+		ctx := r.Context()
+		if croot != "" {
+			ctx = context.WithValue(ctx, mountRootKey, croot)
+		}
+		if cfilter != nil {
+			ctx = context.WithValue(ctx, filterKey, cfilter)
+		}
+		r = r.WithContext(ctx)
+	}
+
 	switch r.Method {
 	case http.MethodGet:
 		s.handleGet(w, r)
@@ -494,13 +537,6 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle(s.root, http.HandlerFunc(s.handleWebDAV))
 	s.mux.Handle("/infuse/*", http.HandlerFunc(s.handleWebDAV))
 	s.mux.Handle("/infuse", http.HandlerFunc(s.handleWebDAV))
-
-	// Library virtual path routes — each mount point gets a filtered handler.
-	for _, vp := range s.virtualFilters {
-		mount := vp.Mount
-		s.mux.Handle(mount+"/*", s.webdavHandler(mount, vp))
-		s.mux.Handle(mount, s.webdavHandler(mount, vp))
-	}
 
 	// HTTP browser (directory listing + file streaming with CDN proxy).
 	s.mux.With(requireAuth).Get("/http/*", s.handleHTTP)

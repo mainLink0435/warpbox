@@ -772,17 +772,28 @@ func (s *Server) serveDirListing(w http.ResponseWriter, reqPath string, depth st
 
 	// Add immediate children based on depth.
 	if depth == "1" || depth == "infinity" {
-		// Track immediate children of the requested directory.
-		type childInfo struct {
-			isDir     bool
-			size      int64
-			name      string
-			mime      string
-			createdAt string
-		}
-		immediate := map[string]childInfo{}
 
-		for _, rec := range records {
+		// At the root level (/webdav/) with virtual paths configured,
+		// show synthetic directory entries instead of real files.
+		if prefix == "" && len(s.virtualFilters) > 0 && root == webdavRoot {
+			baseHref := strings.TrimRight(normalised, "/") + "/"
+			responses = appendResponse(responses, baseHref+"__all__/", true, 0, "", "", "", &seen)
+			for _, vf := range s.virtualFilters {
+				name := strings.TrimPrefix(vf.Mount, "/")
+				responses = appendResponse(responses, baseHref+name+"/", true, 0, "", "", "", &seen)
+			}
+		} else {
+			// Track immediate children of the requested directory.
+			type childInfo struct {
+				isDir     bool
+				size      int64
+				name      string
+				mime      string
+				createdAt string
+			}
+			immediate := map[string]childInfo{}
+
+			for _, rec := range records {
 			relPath := strings.TrimPrefix(rec.Path, prefix)
 			relPath = strings.TrimPrefix(relPath, "/")
 
@@ -823,7 +834,8 @@ func (s *Server) serveDirListing(w http.ResponseWriter, reqPath string, depth st
 				responses = appendResponse(responses, childHref, false, info.size, info.name, info.mime, info.createdAt, &seen)
 			}
 		}
-	}
+		} // close else block
+	} // close depth block
 
 	// Build the XML response.
 	ms := multiStatus{
