@@ -141,7 +141,11 @@ type ListFilesParams struct {
 
 // listGeneric calls any mylist-style endpoint and decodes the response.
 func (c *Client) listGeneric(ctx context.Context, endpoint, label string, params ListFilesParams) ([]Torrent, error) {
-	u, _ := url.Parse(c.baseURL + endpoint)
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("torbox: invalid base URL: %w", err)
+	}
+	u := base.JoinPath(endpoint)
 	q := u.Query()
 	q.Set("bypass_cache", strconv.FormatBool(params.BypassCache))
 	q.Set("offset", strconv.Itoa(params.Offset))
@@ -195,7 +199,11 @@ func (c *Client) ListUsenet(ctx context.Context, params ListFilesParams) ([]Torr
 // GetDownloadURL returns a CDN download URL for the given file in a torrent.
 // The returned URL expires after a few hours but is renewable.
 func (c *Client) GetDownloadURL(ctx context.Context, torrentID, fileID int64, redirect bool) (string, error) {
-	u, _ := url.Parse(c.baseURL + "/v1/api/torrents/requestdl")
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return "", fmt.Errorf("torbox: invalid base URL: %w", err)
+	}
+	u := base.JoinPath("/v1/api/torrents/requestdl")
 	q := u.Query()
 	q.Set("token", c.apiKey)
 	q.Set("torrent_id", strconv.FormatInt(torrentID, 10))
@@ -231,7 +239,11 @@ func (c *Client) GetDownloadURL(ctx context.Context, torrentID, fileID int64, re
 // GetUsenetDownloadURL returns a CDN download URL for the given file in a
 // Usenet download. Uses /v1/api/usenet/requestdl instead of the torrent endpoint.
 func (c *Client) GetUsenetDownloadURL(ctx context.Context, usenetID, fileID int64, redirect bool) (string, error) {
-	u, _ := url.Parse(c.baseURL + "/v1/api/usenet/requestdl")
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return "", fmt.Errorf("torbox: invalid base URL: %w", err)
+	}
+	u := base.JoinPath("/v1/api/usenet/requestdl")
 	q := u.Query()
 	q.Set("token", c.apiKey)
 	q.Set("usenet_id", strconv.FormatInt(usenetID, 10))
@@ -270,7 +282,11 @@ func (c *Client) GetUsenetDownloadURL(ctx context.Context, usenetID, fileID int6
 
 // GetUserInfo returns the authenticated user's account details from TorBox.
 func (c *Client) GetUserInfo(ctx context.Context) (*UserInfo, error) {
-	u, _ := url.Parse(c.baseURL + "/v1/api/user/me")
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("torbox: invalid base URL: %w", err)
+	}
+	u := base.JoinPath("/v1/api/user/me")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
 	if err != nil {
