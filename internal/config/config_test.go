@@ -44,6 +44,24 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Sync.IntervalMinutes != 5 {
 		t.Errorf("sync_interval = %d, want %d", cfg.Sync.IntervalMinutes, 5)
 	}
+	if cfg.Server.EnablePprof {
+		t.Errorf("enable_pprof = %v, want %v", cfg.Server.EnablePprof, false)
+	}
+}
+
+func TestLoadEnablePprof(t *testing.T) {
+	content := []byte("torbox:\n  api_key: \"key\"\nserver:\n  enable_pprof: true\n")
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(tmp)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if !cfg.Server.EnablePprof {
+		t.Errorf("enable_pprof = %v, want %v", cfg.Server.EnablePprof, true)
+	}
 }
 
 func TestLoadCustomValues(t *testing.T) {

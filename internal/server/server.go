@@ -99,10 +99,14 @@ type Config struct {
 	LogFormat          string // For landing page display
 	LogLevel           string // For landing page display
 	SyncIntervalMinute int    // For landing page display
+	SyncLimit          int    // For landing page display
+
+	// Pprof control.
+	EnablePprof bool // Enable /debug/pprof/ endpoints; default false
 
 	// CDN URL fetch retry settings.
 	CDNURLRetryBackoff int // Backoff base in seconds; default 1
-	CDNURLRetryCount   int // Max retry attempts; default 3
+	CDNURLRetryCount   int // Max retry attempts; default 1
 
 	// Negative cache TTL in seconds.
 	NegativeCacheTTLSeconds int // default 30
@@ -406,13 +410,16 @@ func (s *Server) registerRoutes() {
 
 	s.mux.Handle("/actions/", s.versionHeader(http.HandlerFunc(s.handleActions)))
 
-	// pprof endpoints for runtime profiling (heap, goroutine, CPU, etc.)
-	s.mux.Handle("/debug/pprof/", s.versionHeader(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.DefaultServeMux.ServeHTTP(w, r)
-	})))
-	s.mux.Handle("/debug/pprof", s.versionHeader(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.DefaultServeMux.ServeHTTP(w, r)
-	})))
+	// pprof endpoints for runtime profiling (heap, goroutine, CPU, etc.).
+	// Only registered when enable_pprof is true in config.
+	if s.cfg.EnablePprof {
+		s.mux.Handle("/debug/pprof/", s.versionHeader(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.DefaultServeMux.ServeHTTP(w, r)
+		})))
+		s.mux.Handle("/debug/pprof", s.versionHeader(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.DefaultServeMux.ServeHTTP(w, r)
+		})))
+	}
 
 	s.mux.Handle("/stats.json", s.versionHeader(http.HandlerFunc(s.handleStatsJSON)))
 	s.mux.Handle("/", s.versionHeader(http.HandlerFunc(s.handleLanding)))

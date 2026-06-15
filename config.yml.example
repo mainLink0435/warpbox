@@ -16,6 +16,12 @@ server:
   # Default: "/webdav"
   webdav_root: "/webdav"
 
+  # Enable /debug/pprof/ endpoints for runtime profiling.
+  # When enabled, heap profiles, goroutine stacks, and CPU profiles are
+  # exposed. Disable in production unless actively debugging.
+  # Default: false
+  # enable_pprof: false
+
 cache:
   # How long to cache CDN download URLs (in minutes).
   # TorBox CDN URLs expire after a few hours. Setting this too high

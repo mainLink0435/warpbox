@@ -150,6 +150,8 @@ func main() {
 		LogFormat:               cfg.Logging.Format,
 		LogLevel:                cfg.Logging.Level,
 		SyncIntervalMinute:      cfg.Sync.IntervalMinutes,
+		SyncLimit:               cfg.Sync.Limit,
+		EnablePprof:             cfg.Server.EnablePprof,
 		CDNURLRetryBackoff:      *cfg.Cache.CDNURLRetryBackoff,
 		CDNURLRetryCount:        *cfg.Cache.CDNURLRetryCount,
 		NegativeCacheTTLSeconds: *cfg.Cache.NegativeCacheTTLSeconds,

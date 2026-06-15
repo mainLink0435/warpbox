@@ -18,8 +18,9 @@ type TorBoxConfig struct {
 
 // ServerConfig holds the WebDAV server settings.
 type ServerConfig struct {
-	ListenAddr string `yaml:"listen_addr"` // Default: ":8080"
-	WebDAVRoot string `yaml:"webdav_root"` // Default: "/webdav"
+	ListenAddr   string `yaml:"listen_addr"`   // Default: ":8080"
+	WebDAVRoot   string `yaml:"webdav_root"`   // Default: "/webdav"
+	EnablePprof  bool   `yaml:"enable_pprof"`  // Enable /debug/pprof/; default false
 }
 
 // CacheConfig holds caching and CDN proxy parameters.

@@ -197,7 +197,7 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		MaxCDNConnections:    s.cfg.MaxCDNConnections,
 
 		// Sync config
-		SyncLimit: 0, // not in server.Config; display "—"
+		SyncLimit: s.cfg.SyncLimit,
 
 		// Stats config
 		StatsInterval:    s.cfg.StatsIntervalSeconds,
