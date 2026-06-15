@@ -28,6 +28,10 @@ type SyncWorker struct {
 	lastError   error
 	lastSuccess time.Time
 
+	// Hooks for library change detection.
+	OnItemsAdded   func(itemNames []string)
+	OnItemsRemoved func(itemNames []string)
+
 	mu        sync.Mutex
 	parentCtx context.Context
 	cancel    context.CancelFunc
@@ -172,6 +176,44 @@ func sanitizePathSegment(s string) string {
 	return b.String()
 }
 
+// fireChangeHooks compares old and new item sets and calls the registered
+// OnItemsAdded and OnItemsRemoved hooks with the directory names of changed items.
+func (w *SyncWorker) fireChangeHooks(oldItems, newItems []ItemDir) {
+	type key struct {
+		itemID int64
+		source FileSource
+	}
+	oldSet := make(map[key]string, len(oldItems))
+	for _, it := range oldItems {
+		oldSet[key{it.ItemID, it.Source}] = it.Dir
+	}
+	newSet := make(map[key]string, len(newItems))
+	for _, it := range newItems {
+		newSet[key{it.ItemID, it.Source}] = it.Dir
+	}
+
+	var added, removed []string
+	for k, dir := range newSet {
+		if _, exists := oldSet[k]; !exists {
+			added = append(added, dir)
+		}
+	}
+	for k, dir := range oldSet {
+		if _, exists := newSet[k]; !exists {
+			removed = append(removed, dir)
+		}
+	}
+
+	if len(added) > 0 && w.OnItemsAdded != nil {
+		slog.Info("metadata sync: items added", "count", len(added), "items", added)
+		w.OnItemsAdded(added)
+	}
+	if len(removed) > 0 && w.OnItemsRemoved != nil {
+		slog.Info("metadata sync: items removed", "count", len(removed), "items", removed)
+		w.OnItemsRemoved(removed)
+	}
+}
+
 // errorString converts an error to a string, returning "" for nil.
 func errorString(err error) string {
 	if err == nil {
@@ -183,6 +225,12 @@ func errorString(err error) string {
 // syncOnce performs a single sync cycle through the throttle queue.
 func (w *SyncWorker) syncOnce(ctx context.Context) {
 	slog.Debug("metadata sync: starting")
+
+	// Snapshot current items for change detection.
+	var oldItems []ItemDir
+	if w.OnItemsAdded != nil || w.OnItemsRemoved != nil {
+		oldItems, _ = w.store.ListItemDirs()
+	}
 
 	// Record GC cycles before sync to measure allocation pressure.
 	var gcStart uint32
@@ -243,15 +291,6 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 		slog.Error("metadata sync: usenet failed", "error", usenetRes.err)
 	}
 
-	// Merge: torrents first, then usenet.
-	var all []torbox.Torrent
-	if torRes.torrents != nil {
-		all = append(all, torRes.torrents...)
-	}
-	if usenetRes.usenet != nil {
-		all = append(all, usenetRes.usenet...)
-	}
-
 	// Reserve a sync batch tag so we can prune stale records later.
 	// This tag is atomically incremented and stored in the meta table.
 	syncTag, err := w.store.GetNextSyncTag()
@@ -260,57 +299,47 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 		return
 	}
 
-	// Flatten all items into file records.
+	// Flatten torrent items into file records with SourceTorrent.
 	var count int
-	for _, t := range all {
+	for _, t := range torRes.torrents {
 		if t.DownloadState != "cached" && !t.DownloadPresent {
 			continue
 		}
 		if len(t.Files) == 0 {
-			slog.Debug("metadata sync: skipping item with no files", "id", t.ID, "name", t.Name)
+			slog.Debug("metadata sync: skipping torrent with no files", "id", t.ID, "name", t.Name)
 			continue
 		}
 
 		for _, f := range t.Files {
-			// Derive the virtual path from s3_path: strip the leading hash segment.
-			// s3_path is always "hash/torrent_dir/file_name" for multi-file torrents
-			// but can be "hash/file_name" for single-file torrents with no directory.
-			// Single-file torrents are placed directly at root level (no wrapper dir).
-			var virtualPath string
-			if idx := strings.IndexByte(f.S3Path, '/'); idx > 0 && idx+1 < len(f.S3Path) {
-				rest := f.S3Path[idx+1:]
-				if idx2 := strings.IndexByte(rest, '/'); idx2 >= 0 {
-					// Multi-file torrent with a directory: "hash/dir/file"
-					// Sanitize each path segment.
-					segments := strings.Split(rest, "/")
-					for i, seg := range segments {
-						segments[i] = sanitizePathSegment(seg)
-					}
-					virtualPath = strings.Join(segments, "/")
-				} else {
-					// Single file s3_path: "hash/filename.ext"
-					// Place directly at root level (no wrapper directory).
-					virtualPath = sanitizePathSegment(rest)
-				}
-			} else {
-				// Fallback: no slash in s3_path at all — use sanitized ShortName.
-				virtualPath = sanitizePathSegment(f.ShortName)
-			}
-
-			rec := FileRecord{
-				TorrentID: t.ID,
-				FileID:    f.ID,
-				Name:      sanitizePathSegment(f.ShortName),
-				Path:      virtualPath,
-				Size:      f.Size,
-				MimeType:  f.MimeType,
-				CreatedAt: t.CreatedAt,
-				SyncTag:   syncTag,
-			}
+			rec := buildFileRecord(t.ID, f, syncTag, SourceTorrent, t.CreatedAt)
 			if err := w.store.UpsertFile(rec); err != nil {
 				slog.Error("metadata sync: upsert failed",
 					"file_id", f.ID,
-					"path", virtualPath,
+					"path", rec.Path,
+					"error", err,
+				)
+				continue
+			}
+			count++
+		}
+	}
+
+	// Flatten usenet items into file records with SourceUsenet.
+	for _, u := range usenetRes.usenet {
+		if u.DownloadState != "cached" && !u.DownloadPresent {
+			continue
+		}
+		if len(u.Files) == 0 {
+			slog.Debug("metadata sync: skipping usenet item with no files", "id", u.ID, "name", u.Name)
+			continue
+		}
+
+		for _, f := range u.Files {
+			rec := buildFileRecord(u.ID, f, syncTag, SourceUsenet, u.CreatedAt)
+			if err := w.store.UpsertFile(rec); err != nil {
+				slog.Error("metadata sync: upsert failed",
+					"file_id", f.ID,
+					"path", rec.Path,
 					"error", err,
 				)
 				continue
@@ -344,6 +373,14 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 		}
 	}
 
+	// Detect added/removed items and fire hooks.
+	if len(oldItems) > 0 && (w.OnItemsAdded != nil || w.OnItemsRemoved != nil) {
+		newItems, _ := w.store.ListItemDirs()
+		if len(newItems) > 0 {
+			w.fireChangeHooks(oldItems, newItems)
+		}
+	}
+
 	// Log GC cycles that fired during this sync, if any.
 	if gcStart > 0 {
 		var mem runtime.MemStats
@@ -355,4 +392,44 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 	}
 
 	slog.Debug("metadata sync complete", "files_synced", count)
+}
+
+// buildFileRecord creates a FileRecord from a TorBox item and file.
+func buildFileRecord(itemID int64, f torbox.TorrentFile, syncTag int64, source FileSource, createdAt string) FileRecord {
+	// Derive the virtual path from s3_path: strip the leading hash segment.
+	// s3_path is always "hash/torrent_dir/file_name" for multi-file torrents
+	// but can be "hash/file_name" for single-file torrents with no directory.
+	// Single-file torrents are placed directly at root level (no wrapper dir).
+	var virtualPath string
+	if idx := strings.IndexByte(f.S3Path, '/'); idx > 0 && idx+1 < len(f.S3Path) {
+		rest := f.S3Path[idx+1:]
+		if idx2 := strings.IndexByte(rest, '/'); idx2 >= 0 {
+			// Multi-file torrent with a directory: "hash/dir/file"
+			// Sanitize each path segment.
+			segments := strings.Split(rest, "/")
+			for i, seg := range segments {
+				segments[i] = sanitizePathSegment(seg)
+			}
+			virtualPath = strings.Join(segments, "/")
+		} else {
+			// Single file s3_path: "hash/filename.ext"
+			// Place directly at root level (no wrapper directory).
+			virtualPath = sanitizePathSegment(rest)
+		}
+	} else {
+		// Fallback: no slash in s3_path at all — use sanitized ShortName.
+		virtualPath = sanitizePathSegment(f.ShortName)
+	}
+
+	return FileRecord{
+		ItemID:    itemID,
+		FileID:    f.ID,
+		Source:    source,
+		Name:      sanitizePathSegment(f.ShortName),
+		Path:      virtualPath,
+		Size:      f.Size,
+		MimeType:  f.MimeType,
+		CreatedAt: createdAt,
+		SyncTag:   syncTag,
+	}
 }

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ben/warpbox/internal/library"
 	"github.com/ben/warpbox/internal/metadata"
 	"github.com/ben/warpbox/internal/throttle"
 )
@@ -25,12 +26,16 @@ import (
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
-	// Resolve virtual path.
-	virtualPath := strings.TrimPrefix(r.URL.Path, s.root)
+	// Extract filter from context (set by virtual path handlers).
+	libFilter, _ := r.Context().Value(filterKey).(*library.Filter)
+
+	// Resolve virtual path using the appropriate root (mount or s.root).
+	root := s.rootForRequest(r)
+	virtualPath := strings.TrimPrefix(r.URL.Path, root)
 	virtualPath = strings.TrimPrefix(virtualPath, "/")
 
 	if virtualPath == "" {
-		s.serveDirListing(w, r.URL.Path, "1")
+		s.serveDirListing(w, r.URL.Path, "1", libFilter, root)
 		return
 	}
 
@@ -52,7 +57,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(records) > 0 {
-			s.serveDirListing(w, r.URL.Path, "1")
+			s.serveDirListing(w, r.URL.Path, "1", libFilter, root)
 			return
 		}
 		http.Error(w, "not found", http.StatusNotFound)
@@ -685,8 +690,9 @@ func parseRange(rang string, fileSize int64) (*httpRange, error) {
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleHead(w http.ResponseWriter, r *http.Request) {
-	// Resolve virtual path.
-	virtualPath := strings.TrimPrefix(r.URL.Path, s.root)
+	// Resolve virtual path using the appropriate root (mount or s.root).
+	root := s.rootForRequest(r)
+	virtualPath := strings.TrimPrefix(r.URL.Path, root)
 	virtualPath = strings.TrimPrefix(virtualPath, "/")
 
 	if virtualPath == "" {
@@ -727,7 +733,7 @@ func (s *Server) handleHead(w http.ResponseWriter, r *http.Request) {
 // a WebDAV Multi-Status XML document listing the directory contents.
 // This matches the behaviour of zurg and other standards-compliant WebDAV servers
 // so that Chrome and other browsers render a browsable directory listing.
-func (s *Server) serveDirListing(w http.ResponseWriter, reqPath string, depth string) {
+func (s *Server) serveDirListing(w http.ResponseWriter, reqPath string, depth string, f *library.Filter, root string) {
 	slog.Debug("directory listing", "path", reqPath, "depth", depth)
 
 	// Normalise the path.
@@ -736,8 +742,8 @@ func (s *Server) serveDirListing(w http.ResponseWriter, reqPath string, depth st
 		normalised = "/"
 	}
 
-	// Build the virtual prefix: strip the WebDAV root from the path.
-	prefix := strings.TrimPrefix(normalised, s.root)
+	// Build the virtual prefix: strip the root (s.root or mount) from the path.
+	prefix := strings.TrimPrefix(normalised, root)
 	prefix = strings.TrimPrefix(prefix, "/")
 
 	// List files from SQLite matching this prefix.
@@ -746,6 +752,11 @@ func (s *Server) serveDirListing(w http.ResponseWriter, reqPath string, depth st
 		slog.Error("directory listing: ListDir failed", "prefix", prefix, "error", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
+	}
+
+	// Apply library filter if provided.
+	if f != nil {
+		records = f.Apply(records)
 	}
 
 	// Build a set of virtual paths for the response.

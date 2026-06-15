@@ -11,8 +11,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -125,6 +127,20 @@ func main() {
 		time.Duration(cfg.Sync.IntervalMinutes)*time.Minute,
 		cfg.Sync.Limit,
 	)
+
+	// Set library change hooks.
+	libCfg := &cfg.Library
+	if libCfg.OnItemsAdded != "" {
+		syncWorker.OnItemsAdded = func(items []string) {
+			runItemsHook(libCfg.OnItemsAdded, libCfg.HookTimeoutSec, items)
+		}
+	}
+	if libCfg.OnItemsRemoved != "" {
+		syncWorker.OnItemsRemoved = func(items []string) {
+			runItemsHook(libCfg.OnItemsRemoved, libCfg.HookTimeoutSec, items)
+		}
+	}
+
 	go syncWorker.Start(ctx)
 
 	server.SetActions(map[string]server.ActionFunc{
@@ -172,6 +188,7 @@ func main() {
 	serverCfg.AuthEnabled = cfg.Auth.Enabled
 	serverCfg.AuthUsername = cfg.Auth.Username
 	serverCfg.AuthPassword = cfg.Auth.Password
+	serverCfg.VirtualPaths = cfg.Library.VirtualPaths
 
 	srv := server.New(
 		serverCfg,
@@ -206,5 +223,33 @@ func main() {
 		slog.Info("shutting down warpbox")
 	case err := <-serverErr:
 		slog.Error("server error", "error", err)
+	}
+}
+
+func runItemsHook(command string, timeoutSec int, items []string) {
+	if command == "" || len(items) == 0 {
+		return
+	}
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		slog.Warn("empty hook command")
+		return
+	}
+	args := append(parts[1:], items...)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, parts[0], args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			slog.Warn("hook timed out", "command", command, "timeout_seconds", timeoutSec, "items", items)
+		} else {
+			slog.Error("hook failed", "command", command, "error", err, "output", string(output), "items", items)
+		}
+		return
+	}
+	if len(output) > 0 {
+		slog.Info("hook output", "command", command, "output", string(output), "items", items)
 	}
 }

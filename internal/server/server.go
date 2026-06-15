@@ -8,6 +8,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	_ "net/http/pprof"
 	"log/slog"
 	"net/http"
@@ -18,6 +19,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ben/warpbox/internal/config"
+	"github.com/ben/warpbox/internal/library"
 	"github.com/ben/warpbox/internal/metadata"
 	"github.com/ben/warpbox/internal/openapi"
 	"github.com/ben/warpbox/internal/throttle"
@@ -85,6 +88,9 @@ type Server struct {
 	prevDBLockErrors    int64
 	prevNumGC           uint32
 
+	// Library virtual path filters (nil when not configured).
+	virtualFilters []*library.Filter
+
 	// TorBox user info (refreshed periodically).
 	torboxUserInfo   *torbox.UserInfo
 	torboxUserInfoMu sync.Mutex
@@ -139,6 +145,14 @@ type Config struct {
 	// slog.HandlerOptions.Level so a Set() call takes effect immediately.
 	// Must be set by main.go after New() returns.
 	LevelVar *slog.LevelVar
+
+	// Auth settings for optional HTTP Basic Authentication on web UI.
+	AuthEnabled  bool
+	AuthUsername string
+	AuthPassword string
+
+	// Library virtual path configuration.
+	VirtualPaths []config.VirtualPathConfig
 }
 
 // New creates a new WebDAV server.
@@ -146,6 +160,11 @@ func New(cfg Config, store *metadata.Store, torBox *torbox.Client, queue *thrott
 	maxConns := cfg.MaxCDNConnections
 	if maxConns < 1 {
 		maxConns = 4
+	}
+
+	virtualFilters, vpErr := buildFilters(cfg.VirtualPaths)
+	if vpErr != nil {
+		slog.Error("server: failed to build virtual path filters", "error", vpErr)
 	}
 
 	s := &Server{
@@ -166,6 +185,7 @@ func New(cfg Config, store *metadata.Store, torBox *torbox.Client, queue *thrott
 		configPath:             cfg.ConfigPath,
 		statsRetention:          time.Duration(cfg.StatsRetentionHours) * time.Hour,
 		statsChartSince:         time.Duration(cfg.StatsChartMinutes) * time.Minute,
+		virtualFilters:          virtualFilters,
 	}
 	// Fill the semaphore so we can Acquire/Release.
 	for i := 0; i < maxConns; i++ {
@@ -174,6 +194,18 @@ func New(cfg Config, store *metadata.Store, torBox *torbox.Client, queue *thrott
 	s.registerRoutes()
 	s.startCleanupLoop()
 	return s
+}
+
+func buildFilters(vps []config.VirtualPathConfig) ([]*library.Filter, error) {
+	filters := make([]*library.Filter, 0, len(vps))
+	for _, vp := range vps {
+		f, err := library.NewFilter(vp.Mount, vp.DirectoryRegex, vp.FileRegex, vp.LargestFileOnly)
+		if err != nil {
+			return nil, fmt.Errorf("building filter for %q: %w", vp.Mount, err)
+		}
+		filters = append(filters, f)
+	}
+	return filters, nil
 }
 
 // AcquireCDNConn blocks until a CDN connection slot is available.
@@ -281,6 +313,31 @@ func (s *Server) TorBoxUserInfo() *torbox.UserInfo {
 	s.torboxUserInfoMu.Lock()
 	defer s.torboxUserInfoMu.Unlock()
 	return s.torboxUserInfo
+}
+
+// Context keys for passing library filter and mount path through request context.
+type filterKeyType struct{}
+type mountKeyType struct{}
+
+var filterKey filterKeyType
+var mountKey mountKeyType
+
+// webdavHandler creates a filtered WebDAV handler for a virtual path mount.
+func (s *Server) webdavHandler(mount string, f *library.Filter) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), filterKey, f)
+		ctx = context.WithValue(ctx, mountKey, mount)
+		s.handleWebDAV(w, r.WithContext(ctx))
+	}
+}
+
+// rootForRequest returns the WebDAV root path to use for prefix stripping.
+// Falls back to s.root when no virtual path mount is in context.
+func (s *Server) rootForRequest(r *http.Request) string {
+	if mount, ok := r.Context().Value(mountKey).(string); ok && mount != "" {
+		return mount
+	}
+	return s.root
 }
 
 // StopCleanup stops the periodic cleanup goroutine. Intended for tests.
@@ -425,6 +482,12 @@ func (s *Server) registerRoutes() {
 	// instead of rejecting it at the routing level.
 	chi.RegisterMethod("PROPFIND")
 
+	// requireAuth adapts the main branch's Basic Auth middleware for chi.
+	// When auth is disabled it passes through without checking.
+	requireAuth := func(next http.Handler) http.Handler {
+		return s.requireAuth(next.ServeHTTP)
+	}
+
 	// WebDAV routes — internal dispatch handles GET, HEAD, OPTIONS, PROPFIND.
 	// Chi's Handle is used (not per-method) because PROPFIND is non-standard.
 	s.mux.Handle(s.root+"/*", http.HandlerFunc(s.handleWebDAV))
@@ -432,15 +495,22 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("/infuse/*", http.HandlerFunc(s.handleWebDAV))
 	s.mux.Handle("/infuse", http.HandlerFunc(s.handleWebDAV))
 
+	// Library virtual path routes — each mount point gets a filtered handler.
+	for _, vp := range s.virtualFilters {
+		mount := vp.Mount
+		s.mux.Handle(mount+"/*", s.webdavHandler(mount, vp))
+		s.mux.Handle(mount, s.webdavHandler(mount, vp))
+	}
+
 	// HTTP browser (directory listing + file streaming with CDN proxy).
-	s.mux.Get("/http/*", s.handleHTTP)
-	s.mux.Get("/http", s.handleHTTP)
+	s.mux.With(requireAuth).Get("/http/*", s.handleHTTP)
+	s.mux.With(requireAuth).Get("/http", s.handleHTTP)
 
 	// Logs endpoint.
-	s.mux.Get("/logs", s.handleLogs)
-	s.mux.Get("/logs/", s.handleLogs)
+	s.mux.With(requireAuth).Get("/logs", s.handleLogs)
+	s.mux.With(requireAuth).Get("/logs/", s.handleLogs)
 
-	// API: Health check.
+	// API: Health check (no auth — used by uptime monitors / load balancers).
 	s.mux.Method("GET", "/healthz", openapi.Annotated(
 		http.HandlerFunc(s.handleHealthz),
 		openapi.Operation{
@@ -471,8 +541,8 @@ func (s *Server) registerRoutes() {
 		},
 	))
 
-	// API: Time-series stats.
-	s.mux.Method("GET", "/stats.json", openapi.Annotated(
+	// API: Time-series stats (auth required).
+	s.mux.With(requireAuth).Method("GET", "/stats.json", openapi.Annotated(
 		http.HandlerFunc(s.handleStatsJSON),
 		openapi.Operation{
 			Summary:     "Time-series metrics",
@@ -500,8 +570,9 @@ func (s *Server) registerRoutes() {
 		},
 	))
 
-	// API: Actions (management sub-routes).
+	// API: Actions (management sub-routes, all require auth).
 	s.mux.Route("/actions", func(r chi.Router) {
+		r.Use(requireAuth)
 		r.Method("POST", "/resync", openapi.Annotated(
 			http.HandlerFunc(s.handleResync),
 			openapi.Operation{
@@ -559,12 +630,12 @@ func (s *Server) registerRoutes() {
 
 	// pprof endpoints (conditional).
 	if s.cfg.EnablePprof {
-		s.mux.HandleFunc("/debug/pprof", http.DefaultServeMux.ServeHTTP)
-		s.mux.HandleFunc("/debug/pprof/*", http.DefaultServeMux.ServeHTTP)
+		s.mux.With(requireAuth).HandleFunc("/debug/pprof", http.DefaultServeMux.ServeHTTP)
+		s.mux.With(requireAuth).HandleFunc("/debug/pprof/*", http.DefaultServeMux.ServeHTTP)
 	}
 
 	// Landing page (exact match only).
-	s.mux.Get("/", s.handleLanding)
+	s.mux.With(requireAuth).Get("/", s.handleLanding)
 
 	// Static assets.
 	s.mux.Get("/warpbox.svg", s.handleLogo)
@@ -580,7 +651,7 @@ func (s *Server) registerRoutes() {
 		Version:     s.cfg.Version,
 	})
 	spec.BuildFromRouter(s.mux)
-	s.mux.Get("/openapi.json", spec.Handler())
+	s.mux.With(requireAuth).Get("/openapi.json", spec.Handler())
 }
 
 // SetSyncStatus configures the callback for reading sync worker status.

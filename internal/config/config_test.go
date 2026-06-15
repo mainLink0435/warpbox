@@ -410,3 +410,210 @@ func TestGenerateTemplateBadPath(t *testing.T) {
 		t.Fatal("expected error for bad path")
 	}
 }
+
+func TestLoadLibraryValid(t *testing.T) {
+	content := []byte(`
+torbox:
+  api_key: "test-key"
+library:
+  virtual_paths:
+    - mount: "/movies"
+      directory_regex: "(?i)(19|20)([0-9]{2})"
+      file_regex: ".*\\.(mkv|mp4|avi)$"
+      largest_file_only: true
+    - mount: "/tv"
+      directory_regex: "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)"
+      file_regex: ".*\\.(mkv|mp4|avi)$"
+      largest_file_only: false
+  on_items_added: "sh /path/to/script.sh"
+  on_items_removed: "sh /path/to/remove.sh"
+  hook_timeout_seconds: 60
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(tmp)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if len(cfg.Library.VirtualPaths) != 2 {
+		t.Fatalf("expected 2 virtual paths, got %d", len(cfg.Library.VirtualPaths))
+	}
+	if cfg.Library.VirtualPaths[0].Mount != "/movies" {
+		t.Errorf("mount[0] = %q, want /movies", cfg.Library.VirtualPaths[0].Mount)
+	}
+	if !cfg.Library.VirtualPaths[0].LargestFileOnly {
+		t.Error("largest_file_only[0] should be true")
+	}
+	if cfg.Library.VirtualPaths[1].Mount != "/tv" {
+		t.Errorf("mount[1] = %q, want /tv", cfg.Library.VirtualPaths[1].Mount)
+	}
+	if cfg.Library.OnItemsAdded != "sh /path/to/script.sh" {
+		t.Errorf("on_items_added = %q", cfg.Library.OnItemsAdded)
+	}
+	if cfg.Library.HookTimeoutSec != 60 {
+		t.Errorf("hook_timeout = %d, want 60", cfg.Library.HookTimeoutSec)
+	}
+}
+
+func TestLoadLibraryInvalidDirectoryRegex(t *testing.T) {
+	content := []byte(`
+torbox:
+  api_key: "test-key"
+library:
+  virtual_paths:
+    - mount: "/movies"
+      directory_regex: "[invalid"
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for invalid directory_regex")
+	}
+}
+
+func TestLoadLibraryInvalidFileRegex(t *testing.T) {
+	content := []byte(`
+torbox:
+  api_key: "test-key"
+library:
+  virtual_paths:
+    - mount: "/movies"
+      file_regex: "[invalid"
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for invalid file_regex")
+	}
+}
+
+func TestLoadLibraryDuplicateMount(t *testing.T) {
+	content := []byte(`
+torbox:
+  api_key: "test-key"
+library:
+  virtual_paths:
+    - mount: "/movies"
+      directory_regex: "(?i)1999"
+    - mount: "/movies"
+      directory_regex: "(?i)2000"
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for duplicate mount paths")
+	}
+}
+
+func TestLoadLibraryEmptyMount(t *testing.T) {
+	content := []byte(`
+torbox:
+  api_key: "test-key"
+library:
+  virtual_paths:
+    - mount: ""
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for empty mount")
+	}
+}
+
+func TestLoadLibraryHookTimeoutDefault(t *testing.T) {
+	content := []byte(`
+torbox:
+  api_key: "test-key"
+library:
+  hook_timeout_seconds: 0
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(tmp)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.Library.HookTimeoutSec != 30 {
+		t.Errorf("zero hook_timeout should default to 30, got %d", cfg.Library.HookTimeoutSec)
+	}
+}
+
+func TestLoadLibraryDefaultHookTimeout(t *testing.T) {
+	content := []byte(`
+torbox:
+  api_key: "test-key"
+library:
+  on_items_added: "sh script.sh"
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(tmp)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.Library.HookTimeoutSec != 30 {
+		t.Errorf("default hook_timeout = %d, want 30", cfg.Library.HookTimeoutSec)
+	}
+}
+
+func TestLoadLibraryInvalidHookTimeout(t *testing.T) {
+	tests := []struct {
+		name  string
+		value int
+	}{
+		{"negative", -5},
+		{"too_high", 3601},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := fmt.Sprintf("torbox:\n  api_key: \"key\"\nlibrary:\n  hook_timeout_seconds: %d\n", tt.value)
+			tmp := t.TempDir() + "/config.yml"
+			if err := os.WriteFile(tmp, []byte(yaml), 0644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(tmp)
+			if err == nil {
+				t.Errorf("expected error for hook_timeout_seconds=%d", tt.value)
+			}
+		})
+	}
+}
+
+func TestLoadLibraryEmptyVirtualPaths(t *testing.T) {
+	content := []byte(`
+torbox:
+  api_key: "test-key"
+library:
+  virtual_paths: []
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(tmp)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if len(cfg.Library.VirtualPaths) != 0 {
+		t.Errorf("expected 0 virtual paths, got %d", len(cfg.Library.VirtualPaths))
+	}
+}

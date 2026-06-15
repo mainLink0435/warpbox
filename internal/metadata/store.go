@@ -284,6 +284,38 @@ func (s *Store) GetCDNURL(internalID int64) (string, error) {
 	return url, nil
 }
 
+// ItemDir represents a distinct torrent/usenet item with its directory name.
+type ItemDir struct {
+	ItemID int64
+	Source FileSource
+	Dir    string
+}
+
+// ListItemDirs returns all distinct (item_id, source, dir_name) tuples.
+// The dir_name is the first path segment (torrent-level directory).
+func (s *Store) ListItemDirs() ([]ItemDir, error) {
+	rows, err := s.db.Query(`
+		SELECT DISTINCT item_id, source,
+			CASE WHEN instr(path, '/') > 0 THEN substr(path, 1, instr(path, '/') - 1)
+			ELSE path END
+		FROM files
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("querying item dirs: %w", err)
+	}
+	defer rows.Close()
+
+	var items []ItemDir
+	for rows.Next() {
+		var it ItemDir
+		if err := rows.Scan(&it.ItemID, &it.Source, &it.Dir); err != nil {
+			return nil, fmt.Errorf("scanning item dir: %w", err)
+		}
+		items = append(items, it)
+	}
+	return items, rows.Err()
+}
+
 // CountFiles returns the total number of file records in the store.
 func (s *Store) CountFiles() (int, error) {
 	row := s.db.QueryRow(`SELECT COUNT(*) FROM files`)

@@ -12,6 +12,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/ben/warpbox/internal/library"
 )
 
 // formatLastModified parses an ISO 8601 timestamp (like TorBox API's created_at)
@@ -78,8 +80,8 @@ func (s *Server) handlePropfind(w http.ResponseWriter, r *http.Request) {
 		depth = "1" // RFC 4918 default
 	}
 
-	// Build the virtual prefix: strip the WebDAV root from the path.
-	prefix := strings.TrimPrefix(reqPath, s.root)
+	// Build the virtual prefix: strip the WebDAV root (or mount) from the path.
+	prefix := strings.TrimPrefix(reqPath, s.rootForRequest(r))
 	prefix = strings.TrimPrefix(prefix, "/")
 
 	// List files from SQLite matching this prefix.
@@ -88,6 +90,11 @@ func (s *Server) handlePropfind(w http.ResponseWriter, r *http.Request) {
 		slog.Error("PROPFIND: ListDir failed", "prefix", prefix, "error", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
+	}
+
+	// Apply library filter if present in request context.
+	if f, ok := r.Context().Value(filterKey).(*library.Filter); ok && f != nil {
+		records = f.Apply(records)
 	}
 
 	// Build a set of virtual paths for the response.

@@ -102,6 +102,38 @@ sync:
   # Must be 1–100000. Default: 5000
   # limit: 5000
 
+library:
+  # Virtual library paths: filtered views over the raw TorBox file tree.
+  # Each virtual path has its own regex filters that determine which
+  # directories (torrents) and files are visible. Multiple virtual paths
+  # can share files — the same torrent appearing in /movies and /tv.
+  # The raw /webdav mount (__all__) always shows everything unfiltered.
+  # virtual_paths:
+  #   - mount: "/movies"
+  #     # Directory regex identifies movies by year in name.
+  #     directory_regex: "(?i)(19|20)([0-9]{2})"
+  #     # File regex filters which files are shown within matching directories.
+  #     file_regex: ".*\\.(mkv|mp4|avi)$"
+  #     # Only show the largest file per torrent (hides featurettes/samples).
+  #     largest_file_only: true
+  #   - mount: "/tv"
+  #     directory_regex: "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)|\\b(saison|stage)\\.?\\d|[a-z]\\s?-\\s?\\d{2,4}\\b|\\d{2,4}\\s?-\\s?\\d{2,4}\\b"
+  #     file_regex: ".*\\.(mkv|mp4|avi)$"
+  #     largest_file_only: true
+  #
+  # Shell command to run when items are added to the library (after sync).
+  # Receives item directory names as positional arguments.
+  # Example: "curl -X POST http://plex:32400/library/sections/1/refresh"
+  # on_items_added: ""
+  #
+  # Shell command to run when items are removed from the library (after sync).
+  # Receives item directory names as positional arguments.
+  # on_items_removed: ""
+  #
+  # Timeout in seconds for the hook commands. If a hook exceeds this, it is
+  # killed and a warning is logged. Must be 1–3600. Default: 30.
+  # hook_timeout_seconds: 30
+
 auth:
   # Enable HTTP Basic Authentication for the web management UI.
   # When enabled, the landing page, logs, actions, stats, and HTTP browser

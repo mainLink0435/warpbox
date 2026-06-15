@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -74,6 +75,22 @@ type StatsConfig struct {
 	ChartMinutes    int `yaml:"chart_minutes"`    // How far back the landing page chart shows; default 60
 }
 
+// VirtualPathConfig holds a single virtual WebDAV mount with its filters.
+type VirtualPathConfig struct {
+	Mount            string `yaml:"mount"`             // WebDAV mount path, e.g. "/movies"
+	DirectoryRegex   string `yaml:"directory_regex"`   // Regex applied to torrent directory names
+	FileRegex        string `yaml:"file_regex"`        // Regex applied to file paths within torrents
+	LargestFileOnly  bool   `yaml:"largest_file_only"` // Show only the largest file per torrent
+}
+
+// LibraryConfig holds settings for the virtual library feature.
+type LibraryConfig struct {
+	VirtualPaths     []VirtualPathConfig `yaml:"virtual_paths"`
+	OnItemsAdded     string              `yaml:"on_items_added"`   // Shell command for new items
+	OnItemsRemoved   string              `yaml:"on_items_removed"` // Shell command for removed items
+	HookTimeoutSec   int                 `yaml:"hook_timeout_seconds"` // Hook execution timeout; default 30
+}
+
 // AuthConfig holds optional HTTP Basic Authentication settings for the web UI.
 type AuthConfig struct {
 	Enabled  bool   `yaml:"enabled"`  // Enable Basic Auth for web management UI; default false
@@ -91,6 +108,7 @@ type Config struct {
 	Sync     SyncConfig     `yaml:"sync"`
 	Stats    StatsConfig    `yaml:"stats"`
 	Auth     AuthConfig     `yaml:"auth"`
+	Library  LibraryConfig  `yaml:"library"`
 }
 
 // setDefaults fills in default values for any zero-valued fields.
@@ -178,6 +196,9 @@ func setDefaults(c *Config) {
 	}
 	if c.Auth.Username == "" {
 		c.Auth.Username = "admin"
+	}
+	if c.Library.HookTimeoutSec == 0 {
+		c.Library.HookTimeoutSec = 30
 	}
 }
 
@@ -281,6 +302,43 @@ func validate(c *Config) error {
 	}
 	if c.Auth.Enabled && c.Auth.Password == "" {
 		return fmt.Errorf("auth.password is required when auth.enabled is true")
+	}
+	if err := validateLibrary(&c.Library); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateLibrary(l *LibraryConfig) error {
+	seen := make(map[string]bool)
+	for i, vp := range l.VirtualPaths {
+		if vp.Mount == "" {
+			return fmt.Errorf("library.virtual_paths[%d].mount is required", i)
+		}
+		if !strings.HasPrefix(vp.Mount, "/") {
+			return fmt.Errorf("library.virtual_paths[%d].mount must start with '/', got %q", i, vp.Mount)
+		}
+		if vp.Mount == "/" {
+			return fmt.Errorf("library.virtual_paths[%d].mount cannot be '/', use '/webdav' or '__all__'", i)
+		}
+		if seen[vp.Mount] {
+			return fmt.Errorf("library.virtual_paths[%d].mount %q is duplicated", i, vp.Mount)
+		}
+		seen[vp.Mount] = true
+
+		if vp.DirectoryRegex != "" {
+			if _, err := regexp.Compile(vp.DirectoryRegex); err != nil {
+				return fmt.Errorf("library.virtual_paths[%d].directory_regex: %w", i, err)
+			}
+		}
+		if vp.FileRegex != "" {
+			if _, err := regexp.Compile(vp.FileRegex); err != nil {
+				return fmt.Errorf("library.virtual_paths[%d].file_regex: %w", i, err)
+			}
+		}
+	}
+	if l.HookTimeoutSec < 1 || l.HookTimeoutSec > 3600 {
+		return fmt.Errorf("library.hook_timeout_seconds must be 1–3600, got %d", l.HookTimeoutSec)
 	}
 	return nil
 }

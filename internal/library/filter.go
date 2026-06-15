@@ -1,0 +1,114 @@
+package library
+
+import (
+	"regexp"
+	"strings"
+
+	"github.com/ben/warpbox/internal/metadata"
+)
+
+type Filter struct {
+	Mount           string
+	DirectoryRegex  *regexp.Regexp
+	FileRegex       *regexp.Regexp
+	LargestFileOnly bool
+}
+
+func NewFilter(mount, directoryRegex, fileRegex string, largestFileOnly bool) (*Filter, error) {
+	f := &Filter{Mount: mount, LargestFileOnly: largestFileOnly}
+	if directoryRegex != "" {
+		r, err := regexp.Compile(directoryRegex)
+		if err != nil {
+			return nil, err
+		}
+		f.DirectoryRegex = r
+	}
+	if fileRegex != "" {
+		r, err := regexp.Compile(fileRegex)
+		if err != nil {
+			return nil, err
+		}
+		f.FileRegex = r
+	}
+	return f, nil
+}
+
+func ExtractDirectory(path string) string {
+	if idx := strings.IndexByte(path, '/'); idx >= 0 {
+		return path[:idx]
+	}
+	return path
+}
+
+func ExtractRelativePath(path string) string {
+	if idx := strings.IndexByte(path, '/'); idx >= 0 {
+		return path[idx+1:]
+	}
+	return path
+}
+
+func (f *Filter) MatchDirectory(name string) bool {
+	if f.DirectoryRegex == nil {
+		return true
+	}
+	return f.DirectoryRegex.MatchString(name)
+}
+
+func (f *Filter) MatchFile(relPath string) bool {
+	if f.FileRegex == nil {
+		return true
+	}
+	return f.FileRegex.MatchString(relPath)
+}
+
+func (f *Filter) Apply(records []metadata.FileRecord) []metadata.FileRecord {
+	dirMatchCache := make(map[string]bool, len(records)/2)
+	result := make([]metadata.FileRecord, 0, len(records))
+
+	for _, rec := range records {
+		dir := ExtractDirectory(rec.Path)
+		ok, cached := dirMatchCache[dir]
+		if !cached {
+			ok = f.MatchDirectory(dir)
+			dirMatchCache[dir] = ok
+		}
+		if !ok {
+			continue
+		}
+		rel := ExtractRelativePath(rec.Path)
+		if !f.MatchFile(rel) {
+			continue
+		}
+		result = append(result, rec)
+	}
+
+	if f.LargestFileOnly {
+		result = KeepLargest(result)
+	}
+
+	return result
+}
+
+func KeepLargest(records []metadata.FileRecord) []metadata.FileRecord {
+	type key struct {
+		source metadata.FileSource
+		itemID int64
+	}
+	best := make(map[key]metadata.FileRecord)
+	order := make([]key, 0, len(records)/2)
+	for _, rec := range records {
+		k := key{source: rec.Source, itemID: rec.ItemID}
+		existing, has := best[k]
+		if !has {
+			best[k] = rec
+			order = append(order, k)
+		} else if rec.Size > existing.Size {
+			best[k] = rec
+		}
+	}
+	result := make([]metadata.FileRecord, 0, len(order))
+	for _, k := range order {
+		result = append(result, best[k])
+	}
+	return result
+}
