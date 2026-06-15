@@ -192,3 +192,13 @@ This page documents all significant architectural and technical decisions made d
 - **Key evidence:** Actual Docker stats show 47.2MB RSS, 0% CPU idle. `sys_mb` stats metric has been a flat 46MB for the entire 120-minute window. `alloc_mb` averages 3.8MB (live heap). The "20GB" value once observed across a 12GB host physically disproved the interpretation — a 12GB machine cannot allocate 20GB of RSS.
 - **Implementation:** Never actually committed — `FreeOSMemory()` was never added to `startCleanupLoop()`. The code was correct without it.
 - **Issue:** #64, #105
+
+## D-019: `board_issues` MCP tool `move` must use internal issue IDs for board operations
+
+- **Date:** 2026-06-15
+- **Context:** The `board_issues` tool's `move` method in `gitea-unified/server.py` silently returned `{"ok": true}` without actually moving issues. Step 2 (via `move_issues`) was passing issue **numbers** (e.g. 107) to the `POST /projects/{id}/move` endpoint, but Gitea's board stores `data-issue` attributes using internal database IDs (e.g. 109 for issue #107).
+- **Decision:** Collect each issue's internal `id` from the REST API during Step 1, and pass those internal IDs to `move_issues` in Step 2.
+- **Rationale:** The board HTML uses internal IDs in `data-issue` attributes. The `/move` endpoint expects `issueID` values that match these — internal DB IDs, not issue numbers.
+- **Additional finding:** Step 1 (`POST /issues/projects?issue_ids=N`) returns `{"ok": true}` even when the assignment fails silently. This is a Gitea 1.25.5 endpoint quirk — `ctx.FormString("issue_ids")` in `getActionIssues()` appears to not parse the query string correctly when POST body data is also present. The `board_issues` tool attempts this assignment but does not treat a missing project assignment as fatal — it proceeds to the move step regardless. New issues that aren't already on the board must be added manually via the browser UI.
+- **Also fixed:** `_login()` now detects failed logins by checking for the login form in the POST response. `_refresh_csrf()` now verifies it received the actual board page (not a redirect to login).
+- **Issue:** #96
