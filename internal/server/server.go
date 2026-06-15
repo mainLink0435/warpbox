@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ben/warpbox/internal/metadata"
+	"github.com/ben/warpbox/internal/openapi"
 	"github.com/ben/warpbox/internal/throttle"
 	"github.com/ben/warpbox/internal/torbox"
 )
@@ -439,11 +440,121 @@ func (s *Server) registerRoutes() {
 	s.mux.Get("/logs", s.handleLogs)
 	s.mux.Get("/logs/", s.handleLogs)
 
-	// Actions — POST-only sub-routes.
+	// API: Health check.
+	s.mux.Method("GET", "/healthz", openapi.Annotated(
+		http.HandlerFunc(s.handleHealthz),
+		openapi.Operation{
+			Summary:     "Health check",
+			Description: "Returns the health status of the warpbox server and its database connection.",
+			Tags:        []string{"System"},
+			Responses: map[string]openapi.Response{
+				"200": {
+					Description: "Server is healthy",
+					Content: openapi.JSONContent(openapi.Schema{
+						Type: "object",
+						Properties: map[string]*openapi.Schema{
+							"status": {Type: "string", Example: "ok"},
+						},
+					}),
+				},
+				"503": {
+					Description: "Server is unhealthy (e.g. database closed)",
+					Content: openapi.JSONContent(openapi.Schema{
+						Type: "object",
+						Properties: map[string]*openapi.Schema{
+							"status": {Type: "string", Example: "error"},
+							"detail": {Type: "string", Example: "database unreachable"},
+						},
+					}),
+				},
+			},
+		},
+	))
+
+	// API: Time-series stats.
+	s.mux.Method("GET", "/stats.json", openapi.Annotated(
+		http.HandlerFunc(s.handleStatsJSON),
+		openapi.Operation{
+			Summary:     "Time-series metrics",
+			Description: "Returns recorded metrics (API calls, memory, cache sizes) for the configured time window.",
+			Tags:        []string{"Monitoring"},
+			Responses: map[string]openapi.Response{
+				"200": {
+					Description: "Metric data keyed by metric name",
+					Content: openapi.JSONContent(openapi.Schema{
+						Type: "object",
+						AdditionalProperties: &openapi.Schema{
+							Type: "array",
+							Items: &openapi.Schema{
+								Type: "object",
+								Properties: map[string]*openapi.Schema{
+									"t": {Type: "string", Format: "date-time", Example: "2026-01-15T10:30:00Z"},
+									"v": {Type: "number", Example: 42},
+								},
+							},
+						},
+					}),
+				},
+				"500": {Description: "Internal error"},
+			},
+		},
+	))
+
+	// API: Actions (management sub-routes).
 	s.mux.Route("/actions", func(r chi.Router) {
-		r.Post("/resync", s.handleResync)
-		r.Post("/restart-sync", s.handleRestartSync)
-		r.Post("/loglevel", s.handleLogLevel)
+		r.Method("POST", "/resync", openapi.Annotated(
+			http.HandlerFunc(s.handleResync),
+			openapi.Operation{
+				Summary:     "Trigger metadata resync",
+				Description: "Triggers an immediate metadata sync from TorBox. The sync runs asynchronously.",
+				Tags:        []string{"Management"},
+				Responses: map[string]openapi.Response{
+					"200": {Description: "Resync triggered successfully"},
+					"500": {Description: "Resync action not configured"},
+				},
+			},
+		))
+
+		r.Method("POST", "/restart-sync", openapi.Annotated(
+			http.HandlerFunc(s.handleRestartSync),
+			openapi.Operation{
+				Summary:     "Restart sync worker",
+				Description: "Stops the current sync worker loop and starts a fresh one.",
+				Tags:        []string{"Management"},
+				Responses: map[string]openapi.Response{
+					"200": {Description: "Sync worker restart triggered"},
+					"500": {Description: "Restart action not configured"},
+				},
+			},
+		))
+
+		r.Method("POST", "/loglevel", openapi.Annotated(
+			http.HandlerFunc(s.handleLogLevel),
+			openapi.Operation{
+				Summary:     "Change log level",
+				Description: "Changes the runtime log level and persists it to the config file.",
+				Tags:        []string{"Management"},
+				RequestBody: &openapi.RequestBody{
+					Required: true,
+					Content: openapi.FormContent(openapi.Schema{
+						Type: "object",
+						Properties: map[string]*openapi.Schema{
+							"level": {
+								Type:    "string",
+								Enum:    []string{"debug", "info", "warn", "error"},
+								Example: "debug",
+							},
+						},
+						Required: []string{"level"},
+					}),
+				},
+				Responses: map[string]openapi.Response{
+					"200": {Description: "Log level changed"},
+					"400": {Description: "Missing or invalid level parameter"},
+					"500": {Description: "Failed to persist log level"},
+				},
+			},
+		))
 	})
 
 	// pprof endpoints (conditional).
@@ -452,16 +563,24 @@ func (s *Server) registerRoutes() {
 		s.mux.HandleFunc("/debug/pprof/*", http.DefaultServeMux.ServeHTTP)
 	}
 
-	// Health / stats.
-	s.mux.Get("/healthz", s.handleHealthz)
-	s.mux.Get("/stats.json", s.handleStatsJSON)
-
 	// Landing page (exact match only).
 	s.mux.Get("/", s.handleLanding)
 
 	// Static assets.
 	s.mux.Get("/warpbox.svg", s.handleLogo)
 	s.mux.Get("/favicon.ico", s.handleLogo)
+
+	// OpenAPI spec — build from annotated routes, then serve at /openapi.json.
+	// The spec is built after all routes are registered so Walk enumerates
+	// the complete route tree. /openapi.json is registered last so it does
+	// not appear in its own spec output.
+	spec := openapi.NewBuilder(openapi.Info{
+		Title:       "Warpbox API",
+		Description: "Management and monitoring endpoints for the Warpbox media server proxy.",
+		Version:     s.cfg.Version,
+	})
+	spec.BuildFromRouter(s.mux)
+	s.mux.Get("/openapi.json", spec.Handler())
 }
 
 // SetSyncStatus configures the callback for reading sync worker status.
