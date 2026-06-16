@@ -17,7 +17,7 @@ This tool has been developed with heavy AI assistance. If that bothers you, fair
 ```yaml
 services:
   warpbox:
-    image: ghcr.io/mainLink0435/warpbox:0.2.2
+    image: ghcr.io/mainLink0435/warpbox:latest
     container_name: warpbox
     ports:
       - "1412:1412"
@@ -112,6 +112,25 @@ rclone mount warpbox: /mnt/warpbox \
 ```
 
 A flag-by-flag explanation of each rclone setting is in [`docs/rclone-config.md`](docs/rclone-config.md).
+
+### Build from Source
+
+Requires Go 1.26+:
+
+```bash
+# Clone the repository
+git clone https://github.com/mainLink0435/warpbox.git
+cd warpbox
+
+# Build the binary
+go build -o warpbox ./cmd/warpbox
+
+# Run with a config file
+# (see config.yml.example for all options)
+./warpbox -config /path/to/config.yml
+```
+
+The only runtime dependency besides Go is a working TorBox API key set in `config.yml`.
 
 ### Docker permissions (PUID / PGID)
 
