@@ -180,7 +180,7 @@ jobs:
       - name: Build and push Docker images (linux/amd64)
         run: |
           TAG="${{ steps.tag2.outputs.tag }}"
-          REGISTRY="ghcr.io/${{ github.repository }}"
+          REGISTRY="ghcr.io/${GITHUB_REPOSITORY,,}"
           cp dist/warpbox-linux-amd64 warpbox.bin
           docker buildx build \
             --no-cache \
@@ -193,7 +193,7 @@ jobs:
       - name: Build and push Docker images (linux/arm64)
         run: |
           TAG="${{ steps.tag2.outputs.tag }}"
-          REGISTRY="ghcr.io/${{ github.repository }}"
+          REGISTRY="ghcr.io/${GITHUB_REPOSITORY,,}"
           cp dist/warpbox-linux-arm64 warpbox.bin
           docker buildx build \
             --no-cache \
@@ -205,7 +205,7 @@ jobs:
       - name: Push canonical semver tag
         run: |
           TAG="${{ steps.tag2.outputs.tag }}"
-          REGISTRY="ghcr.io/${{ github.repository }}"
+          REGISTRY="ghcr.io/${GITHUB_REPOSITORY,,}"
           docker pull "${REGISTRY}:${TAG}-amd64"
           docker tag "${REGISTRY}:${TAG}-amd64" "${REGISTRY}:${TAG}"
           docker push "${REGISTRY}:${TAG}"
