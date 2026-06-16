@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ben/warpbox/internal/library"
-	"github.com/ben/warpbox/internal/metadata"
-	"github.com/ben/warpbox/internal/throttle"
+	"github.com/mainLink0435/warpbox/internal/library"
+	"github.com/mainLink0435/warpbox/internal/metadata"
+	"github.com/mainLink0435/warpbox/internal/throttle"
 )
 
 // ---------------------------------------------------------------------------

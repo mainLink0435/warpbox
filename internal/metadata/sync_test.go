@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ben/warpbox/internal/throttle"
-	"github.com/ben/warpbox/internal/torbox"
+	"github.com/mainLink0435/warpbox/internal/throttle"
+	"github.com/mainLink0435/warpbox/internal/torbox"
 )
 
 func TestBuildFileRecordTorrent(t *testing.T) {

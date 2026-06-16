@@ -18,11 +18,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ben/warpbox/internal/config"
-	"github.com/ben/warpbox/internal/metadata"
-	"github.com/ben/warpbox/internal/server"
-	"github.com/ben/warpbox/internal/throttle"
-	"github.com/ben/warpbox/internal/torbox"
+	"github.com/mainLink0435/warpbox/internal/config"
+	"github.com/mainLink0435/warpbox/internal/metadata"
+	"github.com/mainLink0435/warpbox/internal/server"
+	"github.com/mainLink0435/warpbox/internal/throttle"
+	"github.com/mainLink0435/warpbox/internal/torbox"
 )
 
 //go:embed banner.txt

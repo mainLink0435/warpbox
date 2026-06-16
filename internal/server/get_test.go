@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ben/warpbox/internal/metadata"
+	"github.com/mainLink0435/warpbox/internal/metadata"
 )
 
 func TestParseRangeFull(t *testing.T) {
