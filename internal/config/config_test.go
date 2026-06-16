@@ -613,3 +613,182 @@ library:
 		t.Errorf("expected 0 virtual paths, got %d", len(cfg.Library.VirtualPaths))
 	}
 }
+
+func TestUpdateLogLevelPreservesComments(t *testing.T) {
+	yamlContent := []byte(`# Warpbox Configuration
+# ======================
+# This file has comments that must survive round-trip.
+
+torbox:
+  # TorBox API key (required).
+  api_key: "test-key"
+
+logging:
+  # Log level: debug, info, warn, error.
+  # Default: info
+  level: "info"
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, yamlContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := UpdateLogLevel(tmp, "debug"); err != nil {
+		t.Fatalf("UpdateLogLevel failed: %v", err)
+	}
+
+	out, err := os.ReadFile(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Comments must survive.
+	if !strings.Contains(string(out), "# Warpbox Configuration") {
+		t.Error("file header comment lost after UpdateLogLevel")
+	}
+	if !strings.Contains(string(out), "# TorBox API key (required).") {
+		t.Error("torbox comment lost after UpdateLogLevel")
+	}
+	if !strings.Contains(string(out), "# Log level: debug, info, warn, error.") {
+		t.Error("logging level comment lost after UpdateLogLevel")
+	}
+	if !strings.Contains(string(out), "# Default: info") {
+		t.Error("logging default comment lost after UpdateLogLevel")
+	}
+
+	// The new level must be present.
+	if !strings.Contains(string(out), `level: "debug"`) && !strings.Contains(string(out), "level: debug") {
+		t.Error("new log level not found in output")
+	}
+}
+
+func TestUpdateLogLevelSameLevel(t *testing.T) {
+	yamlContent := []byte(`# Config
+torbox:
+  api_key: "test-key"
+logging:
+  level: "info"
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, yamlContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := UpdateLogLevel(tmp, "info"); err != nil {
+		t.Fatalf("UpdateLogLevel failed: %v", err)
+	}
+
+	out, err := os.ReadFile(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Content must be identical (no-op write).
+	if string(out) != string(yamlContent) {
+		t.Error("file content changed despite same log level")
+	}
+}
+
+func TestUpdateLogLevelInvalidLevel(t *testing.T) {
+	yamlContent := []byte(`torbox:
+  api_key: "test-key"
+logging:
+  level: "info"
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, yamlContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := UpdateLogLevel(tmp, "invalid")
+	if err == nil {
+		t.Fatal("expected error for invalid level, got nil")
+	}
+
+	out, err := os.ReadFile(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File must remain unchanged on error.
+	if string(out) != string(yamlContent) {
+		t.Error("file was modified despite error")
+	}
+}
+
+func TestUpdateLogLevelNoLoggingSection(t *testing.T) {
+	yamlContent := []byte(`# Simple config
+torbox:
+  api_key: "test-key"
+
+server:
+  listen_addr: ":1412"
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, yamlContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := UpdateLogLevel(tmp, "debug"); err != nil {
+		t.Fatalf("UpdateLogLevel failed: %v", err)
+	}
+
+	out, err := os.ReadFile(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Original content and comments must survive.
+	if !strings.Contains(string(out), "# Simple config") {
+		t.Error("file header comment lost")
+	}
+	if !strings.Contains(string(out), "api_key: \"test-key\"") {
+		t.Error("api_key missing from output")
+	}
+
+	// A logging section should be appended with a descriptive comment.
+	if !strings.Contains(string(out), "# Log level set via web UI") {
+		t.Error("expected descriptive comment for auto-created logging section")
+	}
+	if !strings.Contains(string(out), "level: \"debug\"") && !strings.Contains(string(out), "level: debug") {
+		t.Error("expected level key in auto-created logging section")
+	}
+}
+
+func TestUpdateLogLevelLoggingNoLevel(t *testing.T) {
+	yamlContent := []byte(`torbox:
+  api_key: "test-key"
+logging:
+  format: "json"
+`)
+	tmp := t.TempDir() + "/config.yml"
+	if err := os.WriteFile(tmp, yamlContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := UpdateLogLevel(tmp, "warn"); err != nil {
+		t.Fatalf("UpdateLogLevel failed: %v", err)
+	}
+
+	out, err := os.ReadFile(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The original format field must survive.
+	if !strings.Contains(string(out), "format: \"json\"") && !strings.Contains(string(out), "format: json") {
+		t.Error("existing format field lost")
+	}
+
+	// The new level must now be present.
+	if !strings.Contains(string(out), "level: \"warn\"") && !strings.Contains(string(out), "level: warn") {
+		t.Error("expected level key to be added to existing logging section")
+	}
+}
+
+func TestUpdateLogLevelBadPath(t *testing.T) {
+	err := UpdateLogLevel("/nonexistent/path/config.yml", "info")
+	if err == nil {
+		t.Fatal("expected error for bad path, got nil")
+	}
+}
