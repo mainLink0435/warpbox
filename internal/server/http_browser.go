@@ -94,10 +94,14 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		mountPrefix = "/__all__"
 	}
 
-	// Parse sort parameter (default: name).
-	sortBy := strings.ToLower(r.URL.Query().Get("sort"))
-	if sortBy != "size" {
-		sortBy = "name"
+	// Parse sort parameter: "name", "-name", "size", "-size", "type", "-type".
+	rawSort := strings.ToLower(r.URL.Query().Get("sort"))
+	sortDesc := strings.HasPrefix(rawSort, "-")
+	sortField := strings.TrimPrefix(rawSort, "-")
+	switch sortField {
+	case "size", "type":
+	default:
+		sortField = "name"
 	}
 
 	// Build the directory listing with folder size accumulation.
@@ -182,31 +186,51 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build dirs from accumulated map, sorted.
+	// Build dirs from accumulated map.
 	for _, name := range dirOrder {
 		ag := dirMap[name]
 		dirs = append(dirs, entry{Name: ag.name + "/", Href: ag.href, Size: ag.totalSize, IsDir: true})
 	}
 
-	// Sort directories and files by the requested column.
-	sort.Slice(dirs, func(i, j int) bool {
-		if sortBy == "size" {
-			if dirs[i].Size != dirs[j].Size {
-				return dirs[i].Size < dirs[j].Size
+	// Unified sort across both directories and files.
+	allItems := append(dirs, files...)
+	sort.Slice(allItems, func(i, j int) bool {
+		var less bool
+		switch sortField {
+		case "size":
+			if allItems[i].Size != allItems[j].Size {
+				less = allItems[i].Size < allItems[j].Size
+			} else {
+				less = allItems[i].Name < allItems[j].Name
 			}
-			return dirs[i].Name < dirs[j].Name
-		}
-		return dirs[i].Name < dirs[j].Name
-	})
-	sort.Slice(files, func(i, j int) bool {
-		if sortBy == "size" {
-			if files[i].Size != files[j].Size {
-				return files[i].Size < files[j].Size
+		case "type":
+			// Directories (type "directory") come before files.
+			ti, tj := allItems[i].IsDir, allItems[j].IsDir
+			if ti != tj {
+				less = ti // dir before file
+			} else if ti {
+				less = allItems[i].Name < allItems[j].Name
+			} else {
+				less = allItems[i].Mime < allItems[j].Mime
 			}
-			return files[i].Name < files[j].Name
+		default: // name
+			less = allItems[i].Name < allItems[j].Name
 		}
-		return files[i].Name < files[j].Name
+		if sortDesc {
+			return !less
+		}
+		return less
 	})
+	// Re-split into dirs and files for rendering.
+	dirs = dirs[:0]
+	files = files[:0]
+	for _, it := range allItems {
+		if it.IsDir {
+			dirs = append(dirs, it)
+		} else {
+			files = append(files, it)
+		}
+	}
 
 	// Render the HTML page.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -232,20 +256,62 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "</p>\n")
 
 	fmt.Fprint(w, "<table>\n")
-	fmt.Fprint(w, "<tr><th>Name</th><th>Size</th><th>Type</th></tr>\n")
-
-	for _, d := range dirs {
-		sizeStr := formatSize(d.Size)
-		if d.Size == 0 {
-			sizeStr = "—"
-		}
-		fmt.Fprintf(w, "<tr><td class=\"dir\"><a href=\"%s\">📁 %s</a></td><td>%s</td><td>directory</td></tr>\n",
-			html.EscapeString(d.Href), html.EscapeString(d.Name), sizeStr)
+	// Clickable sort headers with direction toggle.
+	sortPath := r.URL.Path
+	if !strings.HasSuffix(sortPath, "/") {
+		sortPath += "/"
 	}
-	for _, f := range files {
-		sizeStr := formatSize(f.Size)
-		fmt.Fprintf(w, "<tr><td><a href=\"%s\">%s</a></td><td>%s</td><td>%s</td></tr>\n",
-			html.EscapeString(f.Href), html.EscapeString(f.Name), sizeStr, html.EscapeString(f.Mime))
+	next := func(field string) string {
+		if sortField == field && !sortDesc {
+			return "sort=-" + field
+		}
+		return "sort=" + field
+	}
+	ind := func(field string) string {
+		if sortField != field {
+			return ""
+		}
+		if sortDesc {
+			return " ↓"
+		}
+		return " ↑"
+	}
+	fmt.Fprintf(w, "<tr><th><a href=\"%s?%s\">Name%s</a></th><th><a href=\"%s?%s\">Size%s</a></th><th><a href=\"%s?%s\">Type%s</a></th></tr>\n",
+		html.EscapeString(sortPath), html.EscapeString(next("name")), html.EscapeString(ind("name")),
+		html.EscapeString(sortPath), html.EscapeString(next("size")), html.EscapeString(ind("size")),
+		html.EscapeString(sortPath), html.EscapeString(next("type")), html.EscapeString(ind("type")),
+	)
+
+	// For type-descending sort, render from allItems (files before dirs).
+	// Otherwise render dirs first then files.
+	if sortField == "type" && sortDesc {
+		for _, it := range allItems {
+			sizeStr := formatSize(it.Size)
+			if it.Size == 0 {
+				sizeStr = "—"
+			}
+			if it.IsDir {
+				fmt.Fprintf(w, "<tr><td class=\"dir\"><a href=\"%s\">📁 %s</a></td><td>%s</td><td>directory</td></tr>\n",
+					html.EscapeString(it.Href), html.EscapeString(it.Name), sizeStr)
+			} else {
+				fmt.Fprintf(w, "<tr><td><a href=\"%s\">%s</a></td><td>%s</td><td>%s</td></tr>\n",
+					html.EscapeString(it.Href), html.EscapeString(it.Name), sizeStr, html.EscapeString(it.Mime))
+			}
+		}
+	} else {
+		for _, d := range dirs {
+			sizeStr := formatSize(d.Size)
+			if d.Size == 0 {
+				sizeStr = "—"
+			}
+			fmt.Fprintf(w, "<tr><td class=\"dir\"><a href=\"%s\">📁 %s</a></td><td>%s</td><td>directory</td></tr>\n",
+				html.EscapeString(d.Href), html.EscapeString(d.Name), sizeStr)
+		}
+		for _, f := range files {
+			sizeStr := formatSize(f.Size)
+			fmt.Fprintf(w, "<tr><td><a href=\"%s\">%s</a></td><td>%s</td><td>%s</td></tr>\n",
+				html.EscapeString(f.Href), html.EscapeString(f.Name), sizeStr, html.EscapeString(f.Mime))
+		}
 	}
 
 	fmt.Fprint(w, "</table>\n")

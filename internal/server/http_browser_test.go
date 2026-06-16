@@ -162,6 +162,36 @@ func TestHTTPBrowser_SortByName(t *testing.T) {
 	}
 }
 
+func TestHTTPBrowser_SortByNameReverse(t *testing.T) {
+	store, err := metadata.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	store.UpsertFile(metadata.FileRecord{ItemID: 1, Source: metadata.SourceTorrent, Name: "a.mkv", Path: "Alpha.Video/a.mkv", Size: 100, FileID: 1})
+	store.UpsertFile(metadata.FileRecord{ItemID: 2, Source: metadata.SourceTorrent, Name: "z.mkv", Path: "Zed.Video/z.mkv", Size: 100, FileID: 1})
+
+	cfg := Config{Version: "test"}
+	queue := throttle.NewQueue(600)
+	srv := New(cfg, store, nil, queue)
+
+	r := httptest.NewRequest(http.MethodGet, "/http/?sort=-name", nil)
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, r)
+	body := w.Body.String()
+
+	alpha := strings.Index(body, "Alpha.Video")
+	zed := strings.Index(body, "Zed.Video")
+
+	if alpha < 0 || zed < 0 {
+		t.Fatal("expected directories Alpha, Zed")
+	}
+	if !(zed < alpha) {
+		t.Errorf("sort=-name should be descending: Zed before Alpha")
+	}
+}
+
 func TestHTTPBrowser_SortBySize(t *testing.T) {
 	store, err := metadata.Open(":memory:")
 	if err != nil {
@@ -192,6 +222,68 @@ func TestHTTPBrowser_SortBySize(t *testing.T) {
 	}
 	if !(small < med && med < big) {
 		t.Errorf("sort=size should be ascending: Small < Med < Big, got %d %d %d", small, med, big)
+	}
+}
+
+func TestHTTPBrowser_SortByType(t *testing.T) {
+	store, err := metadata.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	store.UpsertFile(metadata.FileRecord{ItemID: 1, Source: metadata.SourceTorrent, Name: "a.mkv", Path: "Alpha.Video/a.mkv", Size: 100, MimeType: "video/x-matroska", FileID: 1})
+	store.UpsertFile(metadata.FileRecord{ItemID: 2, Source: metadata.SourceTorrent, Name: "note.txt", Path: "note.txt", Size: 10, MimeType: "text/plain", FileID: 1})
+
+	cfg := Config{Version: "test"}
+	queue := throttle.NewQueue(600)
+	srv := New(cfg, store, nil, queue)
+
+	r := httptest.NewRequest(http.MethodGet, "/http/?sort=type", nil)
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, r)
+	body := w.Body.String()
+
+	// Type sort: directories first, then files by mime type.
+	dirIdx := strings.Index(body, "Alpha.Video")
+	fileIdx := strings.Index(body, "note.txt")
+
+	if dirIdx < 0 || fileIdx < 0 {
+		t.Fatal("expected directory Alpha.Video and file note.txt")
+	}
+	if !(dirIdx < fileIdx) {
+		t.Errorf("sort=type should have directory before file")
+	}
+}
+
+func TestHTTPBrowser_SortByTypeReverse(t *testing.T) {
+	store, err := metadata.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	store.UpsertFile(metadata.FileRecord{ItemID: 1, Source: metadata.SourceTorrent, Name: "a.mkv", Path: "Alpha.Video/a.mkv", Size: 100, MimeType: "video/x-matroska", FileID: 1})
+	store.UpsertFile(metadata.FileRecord{ItemID: 2, Source: metadata.SourceTorrent, Name: "note.txt", Path: "note.txt", Size: 10, MimeType: "text/plain", FileID: 1})
+
+	cfg := Config{Version: "test"}
+	queue := throttle.NewQueue(600)
+	srv := New(cfg, store, nil, queue)
+
+	r := httptest.NewRequest(http.MethodGet, "/http/?sort=-type", nil)
+	w := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w, r)
+	body := w.Body.String()
+
+	// Type reverse: files first, then directories.
+	dirIdx := strings.Index(body, "Alpha.Video")
+	fileIdx := strings.Index(body, "note.txt")
+
+	if dirIdx < 0 || fileIdx < 0 {
+		t.Fatal("expected directory Alpha.Video and file note.txt")
+	}
+	if !(fileIdx < dirIdx) {
+		t.Errorf("sort=-type should have file before directory")
 	}
 }
 
