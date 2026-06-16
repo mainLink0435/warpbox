@@ -828,7 +828,7 @@ This allows the config file to omit the key entirely (nil → default) while exp
 
 ### Runtime Log Level Update (`UpdateLogLevel`)
 
-- Reads config file into `Config` struct via `yaml.Unmarshal` (yaml.v3 preserves comments)
+- Reads config file into `yaml.Node` tree to preserve comments, formatting, and structure on round-trip
 - Validates the new level via `ParseLevel()`
 - Updates `cfg.Logging.Level`
 - Marshals back to YAML

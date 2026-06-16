@@ -2,6 +2,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"log/slog"
 	"os"
@@ -395,34 +396,66 @@ func GenerateTemplate(path string) (bool, error) {
 }
 
 // UpdateLogLevel reads the config file, updates the logging level, and writes
-// it back atomically (temp file + rename). Returns the parsed slog.Level.
+// it back atomically (temp file + rename). Uses yaml.Node to preserve
+// comments, formatting, and structure on round-trip.
 func UpdateLogLevel(path string, newLevel string) error {
+	// Validate the level first.
+	_, err := ParseLevel(newLevel)
+	if err != nil {
+		return err
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("reading config file: %w", err)
 	}
 
-	// Parse into a generic map so we preserve all keys and comments.
-	// yaml.v3 preserves comments on round-trip.
-	cfg := &Config{}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
+	// Parse into a yaml.Node tree to preserve comments on round-trip.
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("parsing config: %w", err)
 	}
 
-	// Validate the level.
-	_, err = ParseLevel(newLevel)
-	if err != nil {
-		return err
+	// Navigate to the top-level mapping.
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 {
+		return fmt.Errorf("unexpected YAML structure: expected a document with one root node")
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return fmt.Errorf("unexpected YAML structure: expected root mapping")
 	}
 
-	cfg.Logging.Level = newLevel
+	// Walk the root mapping to find the "logging" key.
+	var changed bool
+	var loggingMapping *yaml.Node
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		if root.Content[i].Value == "logging" {
+			loggingMapping = root.Content[i+1]
+			break
+		}
+	}
 
-	// Write to a temp file first, then rename for atomicity.
-	out, err := yaml.Marshal(cfg)
-	if err != nil {
+	if loggingMapping != nil {
+		changed = updateLevelInConfig(loggingMapping, newLevel)
+	} else {
+		appendLoggingSection(root, newLevel)
+		changed = true
+	}
+
+	if !changed {
+		return nil
+	}
+
+	var buf bytes.Buffer
+	encoder := yaml.NewEncoder(&buf)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&doc); err != nil {
 		return fmt.Errorf("marshalling config: %w", err)
 	}
+	encoder.Close()
+	out := buf.Bytes()
 
+	// Atomic write: temp file + rename.
 	tmpPath := path + ".tmp"
 	if err := os.WriteFile(tmpPath, out, 0644); err != nil {
 		return fmt.Errorf("writing temp config: %w", err)
@@ -433,6 +466,43 @@ func UpdateLogLevel(path string, newLevel string) error {
 	}
 
 	return nil
+}
+
+// updateLevelInConfig finds the "level" key in a mapping node and sets its
+// value. Returns true if a change was made.
+func updateLevelInConfig(mapping *yaml.Node, newLevel string) bool {
+	for i := 0; i < len(mapping.Content)-1; i += 2 {
+		if mapping.Content[i].Value == "level" {
+			if mapping.Content[i+1].Value == newLevel {
+				return false
+			}
+			mapping.Content[i+1].Value = newLevel
+			return true
+		}
+	}
+	levelKey := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "level"}
+	levelVal := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: newLevel}
+	mapping.Content = append(mapping.Content, levelKey, levelVal)
+	return true
+}
+
+// appendLoggingSection appends a logging section at the end of the root
+// mapping with a descriptive comment.
+func appendLoggingSection(root *yaml.Node, newLevel string) {
+	levelKey := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "level"}
+	levelVal := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: newLevel}
+	loggingMapping := &yaml.Node{
+		Kind:    yaml.MappingNode,
+		Tag:     "!!map",
+		Content: []*yaml.Node{levelKey, levelVal},
+	}
+	loggingKey := &yaml.Node{
+		Kind:        yaml.ScalarNode,
+		Tag:         "!!str",
+		Value:       "logging",
+		HeadComment: "Log level set via web UI",
+	}
+	root.Content = append(root.Content, loggingKey, loggingMapping)
 }
 
 // Load reads and parses the YAML config file at the given path.
