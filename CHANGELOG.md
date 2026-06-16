@@ -221,23 +221,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Record per-interval deltas for counter metrics in stats charts (previously showed cumulative values), refs #89
 - Highlight active log level button on landing page and prevent re-clicking the already-selected level, refs #90
 - Lower CDN streaming copy error logs from ERROR to DEBUG to reduce noise from connection races
-[Unreleased]: https://REDACTED/ben/warpbox/compare/v0.5.0...HEAD
-[v0.5.0]: https://REDACTED/ben/warpbox/compare/v0.4.0...v0.5.0
-[v0.4.0]: https://REDACTED/ben/warpbox/compare/v0.3.1...v0.4.0
-[v0.3.1]: https://REDACTED/ben/warpbox/compare/v0.3.0...v0.3.1
-[v0.3.0]: https://REDACTED/ben/warpbox/compare/v0.2.3...v0.3.0
-[v0.2.3]: https://REDACTED/ben/warpbox/compare/v0.2.2...v0.2.3
-[v0.2.2]: https://REDACTED/ben/warpbox/compare/v0.2.1...v0.2.2
-[v0.2.1]: https://REDACTED/ben/warpbox/compare/v0.2.0...v0.2.1
-[v0.2.0]: https://REDACTED/ben/warpbox/compare/v0.1.6...v0.2.0
-[v0.1.6]: https://REDACTED/ben/warpbox/compare/v0.1.5...v0.1.6
-[v0.1.5]: https://REDACTED/ben/warpbox/compare/v0.1.4...v0.1.5
-[v0.1.4]: https://REDACTED/ben/warpbox/compare/v0.1.3...v0.1.4
-[v0.1.3]: https://REDACTED/ben/warpbox/compare/v0.1.2...v0.1.3
-[v0.1.2]: https://REDACTED/ben/warpbox/compare/v0.1.1...v0.1.2
-[v0.1.1]: https://REDACTED/ben/warpbox/compare/v0.1.0...v0.1.1
-[v0.1.0]: https://REDACTED/ben/warpbox/compare/v0.0.9...v0.1.0
-[v0.0.9]: https://REDACTED/ben/warpbox/compare/v0.0.8...v0.0.9
-[v0.0.8]: https://REDACTED/ben/warpbox/compare/v0.0.4...v0.0.8
-[v0.0.5]: https://REDACTED/ben/warpbox/compare/v0.0.4...v0.0.5
-[v0.0.4]: https://REDACTED/ben/warpbox/compare/v0.0.2...v0.0.4
+[Unreleased]: /compare/v0.5.0...HEAD
+[v0.5.0]: /compare/v0.4.0...v0.5.0
+[v0.4.0]: /compare/v0.3.1...v0.4.0
+[v0.3.1]: /compare/v0.3.0...v0.3.1
+[v0.3.0]: /compare/v0.2.3...v0.3.0
+[v0.2.3]: /compare/v0.2.2...v0.2.3
+[v0.2.2]: /compare/v0.2.1...v0.2.2
+[v0.2.1]: /compare/v0.2.0...v0.2.1
+[v0.2.0]: /compare/v0.1.6...v0.2.0
+[v0.1.6]: /compare/v0.1.5...v0.1.6
+[v0.1.5]: /compare/v0.1.4...v0.1.5
+[v0.1.4]: /compare/v0.1.3...v0.1.4
+[v0.1.3]: /compare/v0.1.2...v0.1.3
+[v0.1.2]: /compare/v0.1.1...v0.1.2
+[v0.1.1]: /compare/v0.1.0...v0.1.1
+[v0.1.0]: /compare/v0.0.9...v0.1.0
+[v0.0.9]: /compare/v0.0.8...v0.0.9
+[v0.0.8]: /compare/v0.0.4...v0.0.8
+[v0.0.5]: /compare/v0.0.4...v0.0.5
+[v0.0.4]: /compare/v0.0.2...v0.0.4

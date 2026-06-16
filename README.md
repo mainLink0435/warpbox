@@ -59,7 +59,7 @@ If you're using Docker Compose, here's a complete setup. You can copy these serv
 ```yaml
 services:
   warpbox:
-    image: REDACTED/ben/warpbox:0.2.2
+    image: ghcr.io/mainLink0435/warpbox:0.2.2
     container_name: warpbox
     ports:
       - "1412:1412"

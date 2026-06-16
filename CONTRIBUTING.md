@@ -4,7 +4,7 @@ Thank you for considering contributing! This document outlines how to get starte
 
 ## Reporting Issues
 
-Report bugs and feature requests via [Gitea Issues](http://REDACTED/ben/warpbox/issues).
+Report bugs and feature requests via [GitHub Issues](https://github.com/mainLink0435/warpbox/issues).
 
 When filing a bug, include:
 - The version you're running (`warpbox --version` or check the startup log)
@@ -20,11 +20,11 @@ When filing a bug, include:
    - A TorBox API key for testing
 
 2. **Clone and build:**
-   ```bash
-   git clone http://REDACTED/ben/warpbox.git
-   cd warpbox
-   go build -o warpbox.exe ./cmd/warpbox/
-   ```
+    ```bash
+    git clone https://github.com/mainLink0435/warpbox.git
+    cd warpbox
+    go build -o warpbox.exe ./cmd/warpbox/
+    ```
 
 3. **Run tests:**
    ```bash
@@ -41,7 +41,7 @@ When filing a bug, include:
 
 - Follow standard Go conventions (`gofmt`, `go vet`).
 - Use [conventional commits](https://www.conventionalcommits.org/) for commit messages (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`).
-- Include `refs #N` in commit messages to reference issues (Gitea does not support auto-close keywords).
+- Include `refs #N` in commit messages to reference issues.
 - Run `go vet ./...` before committing.
 
 ## Pull Request Process
