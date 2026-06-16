@@ -39,7 +39,7 @@ func (h *ringBufferHandler) Enabled(_ context.Context, level slog.Level) bool {
 
 // Handle stores the formatted log line in the ring buffer, then delegates
 // to the wrapped handler.
-func (h *ringBufferHandler) Handle(_ context.Context, r slog.Record) error {
+func (h *ringBufferHandler) Handle(ctx context.Context, r slog.Record) error {
 	line := formatRecord(&r)
 	h.mu.Lock()
 	h.buf[h.pos] = line
@@ -48,7 +48,7 @@ func (h *ringBufferHandler) Handle(_ context.Context, r slog.Record) error {
 		h.full = true
 	}
 	h.mu.Unlock()
-	return h.inner.Handle(context.Background(), r)
+	return h.inner.Handle(ctx, r)
 }
 
 // WithAttrs returns a new handler with the given attributes.
