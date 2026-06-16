@@ -63,7 +63,11 @@ func (s *Store) QueryStats(metric string, since time.Time) ([]StatsRecord, error
 		if err := rows.Scan(&ts, &r.Metric, &r.Value); err != nil {
 			return nil, fmt.Errorf("scan stats row: %w", err)
 		}
-		r.Timestamp, _ = time.Parse("2006-01-02 15:04:05", ts)
+		if t, parseErr := time.Parse("2006-01-02 15:04:05", ts); parseErr != nil {
+			slog.Debug("stats: failed to parse timestamp", "ts", ts, "error", parseErr)
+		} else {
+			r.Timestamp = t
+		}
 		records = append(records, r)
 	}
 	return records, rows.Err()
@@ -88,7 +92,11 @@ func (s *Store) QueryAllStatsSince(since time.Time) (map[string][]StatsRecord, e
 		if err := rows.Scan(&ts, &r.Metric, &r.Value); err != nil {
 			return nil, fmt.Errorf("scan stats row: %w", err)
 		}
-		r.Timestamp, _ = time.Parse("2006-01-02 15:04:05", ts)
+		if t, parseErr := time.Parse("2006-01-02 15:04:05", ts); parseErr != nil {
+			slog.Debug("stats: failed to parse timestamp", "ts", ts, "error", parseErr)
+		} else {
+			r.Timestamp = t
+		}
 		result[r.Metric] = append(result[r.Metric], r)
 	}
 	return result, rows.Err()
