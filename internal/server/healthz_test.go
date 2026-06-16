@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/mainLink0435/warpbox/internal/metadata"
+	"github.com/mainlink0435/warpbox/internal/metadata"
 )
 
 func TestHandleHealthzHealthy(t *testing.T) {

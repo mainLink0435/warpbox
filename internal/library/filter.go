@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mainLink0435/warpbox/internal/metadata"
+	"github.com/mainlink0435/warpbox/internal/metadata"
 )
 
 type Filter struct {

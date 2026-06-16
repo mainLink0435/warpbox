@@ -126,7 +126,7 @@ Requires Go 1.26.2+:
 
 ```bash
 # Clone the repository
-git clone https://github.com/mainLink0435/warpbox.git
+git clone https://github.com/mainlink0435/warpbox.git
 cd warpbox
 
 # Build the binary

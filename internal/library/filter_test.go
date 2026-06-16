@@ -3,7 +3,7 @@ package library
 import (
 	"testing"
 
-	"github.com/mainLink0435/warpbox/internal/metadata"
+	"github.com/mainlink0435/warpbox/internal/metadata"
 )
 
 func TestNewFilter(t *testing.T) {

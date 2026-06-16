@@ -14,8 +14,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/mainLink0435/warpbox/internal/throttle"
-	"github.com/mainLink0435/warpbox/internal/torbox"
+	"github.com/mainlink0435/warpbox/internal/throttle"
+	"github.com/mainlink0435/warpbox/internal/torbox"
 )
 
 // SyncWorker periodically synchronises the TorBox file listing into SQLite.

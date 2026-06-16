@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/mainLink0435/warpbox/internal/config"
+	"github.com/mainlink0435/warpbox/internal/config"
 )
 
 // ActionFunc is a callback that an action button triggers.

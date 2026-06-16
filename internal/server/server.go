@@ -22,12 +22,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/mainLink0435/warpbox/internal/config"
-	"github.com/mainLink0435/warpbox/internal/library"
-	"github.com/mainLink0435/warpbox/internal/metadata"
-	"github.com/mainLink0435/warpbox/internal/openapi"
-	"github.com/mainLink0435/warpbox/internal/throttle"
-	"github.com/mainLink0435/warpbox/internal/torbox"
+	"github.com/mainlink0435/warpbox/internal/config"
+	"github.com/mainlink0435/warpbox/internal/library"
+	"github.com/mainlink0435/warpbox/internal/metadata"
+	"github.com/mainlink0435/warpbox/internal/openapi"
+	"github.com/mainlink0435/warpbox/internal/throttle"
+	"github.com/mainlink0435/warpbox/internal/torbox"
 )
 
 // SyncStatusFunc is a callback that returns the current sync status.

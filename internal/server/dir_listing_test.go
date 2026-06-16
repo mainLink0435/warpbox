@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mainLink0435/warpbox/internal/metadata"
+	"github.com/mainlink0435/warpbox/internal/metadata"
 )
 
 func TestServeDirListingRoot(t *testing.T) {

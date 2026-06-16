@@ -4,7 +4,7 @@ Thank you for considering contributing! This document outlines how to get starte
 
 ## Reporting Issues
 
-Report bugs and feature requests via [GitHub Issues](https://github.com/mainLink0435/warpbox/issues).
+Report bugs and feature requests via [GitHub Issues](https://github.com/mainlink0435/warpbox/issues).
 
 When filing a bug, include:
 - The version you're running (`warpbox --version` or check the startup log)
@@ -21,7 +21,7 @@ When filing a bug, include:
 
 2. **Clone and build:**
     ```bash
-    git clone https://github.com/mainLink0435/warpbox.git
+    git clone https://github.com/mainlink0435/warpbox.git
     cd warpbox
     CGO_ENABLED=1 go build -o warpbox ./cmd/warpbox/
     ```
