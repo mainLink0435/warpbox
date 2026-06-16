@@ -10,6 +10,7 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/ben/warpbox/internal/library"
@@ -93,47 +94,72 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		mountPrefix = "/__all__"
 	}
 
-	// Build the directory listing.
+	// Parse sort parameter (default: name).
+	sortBy := strings.ToLower(r.URL.Query().Get("sort"))
+	if sortBy != "size" {
+		sortBy = "name"
+	}
+
+	// Build the directory listing with folder size accumulation.
+	type dirAgg struct {
+		name      string
+		href      string
+		totalSize int64
+	}
 	var dirs []entry
 	var files []entry
-	seen := map[string]bool{}
+	dirMap := map[string]*dirAgg{}
+	dirOrder := []string{}
 
 	// At the root level with virtual paths configured, show synthetic dirs.
 	if rawVirtualPath == "" && len(s.virtualFilters) > 0 {
-		dirs = append(dirs, entry{Name: "__all__/", Href: "/http/__all__/", Size: 0, IsDir: true})
-		for _, vf := range s.virtualFilters {
+		// Compute total sizes for each virtual path (matching only, not largest).
+		var allTotal int64
+		filterTotals := make(map[int]int64, len(s.virtualFilters))
+		for _, rec := range records {
+			allTotal += rec.Size
+			for i, vf := range s.virtualFilters {
+				dir := library.ExtractDirectory(rec.Path)
+				if !vf.MatchDirectory(dir) {
+					continue
+				}
+				rel := library.ExtractRelativePath(rec.Path)
+				if !vf.MatchFile(rel) {
+					continue
+				}
+				filterTotals[i] += rec.Size
+			}
+		}
+		dirs = append(dirs, entry{Name: "__all__/", Href: "/http/__all__/", Size: allTotal, IsDir: true})
+		for i, vf := range s.virtualFilters {
 			name := strings.TrimPrefix(vf.Mount, "/")
-			dirs = append(dirs, entry{Name: name + "/", Href: "/http/" + name + "/", Size: 0, IsDir: true})
+			dirs = append(dirs, entry{Name: name + "/", Href: "/http/" + name + "/", Size: filterTotals[i], IsDir: true})
 		}
 	} else {
 		for _, rec := range records {
-		// Determine the relative path from the current directory.
 		rel := strings.TrimPrefix(rec.Path, virtualPath)
 		rel = strings.TrimPrefix(rel, "/")
 
-		// Get the first path component only (for grouping).
 		firstSlash := strings.Index(rel, "/")
 		var displayName string
-		var isDir bool
 		var href string
 
 		if firstSlash >= 0 {
-			// It's inside a subdirectory — create a virtual folder entry.
 			displayName = rel[:firstSlash]
-			if seen[displayName] {
+			if ag, ok := dirMap[displayName]; ok {
+				ag.totalSize += rec.Size
 				continue
 			}
-			seen[displayName] = true
-			isDir = true
 			if virtualPath == "" {
 				href = "/http" + mountPrefix + "/" + displayName + "/"
 			} else {
 				href = "/http" + mountPrefix + "/" + virtualPath + "/" + displayName + "/"
 			}
+			dirMap[displayName] = &dirAgg{name: displayName, href: href, totalSize: rec.Size}
+			dirOrder = append(dirOrder, displayName)
+			continue
 		} else {
-			// It's a file in this directory.
 			displayName = rel
-			isDir = false
 			if virtualPath == "" {
 				href = "/http" + mountPrefix + "/" + rel
 			} else {
@@ -141,10 +167,7 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if isDir {
-			dirs = append(dirs, entry{Name: displayName + "/", Href: href, Size: 0, IsDir: true})
-		} else {
-			mime := rec.MimeType
+		mime := rec.MimeType
 			if mime == "" {
 				mime = "application/octet-stream"
 			}
@@ -156,9 +179,34 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 				IsDir:  false,
 				Mime:   mime,
 			})
-			}
 		}
 	}
+
+	// Build dirs from accumulated map, sorted.
+	for _, name := range dirOrder {
+		ag := dirMap[name]
+		dirs = append(dirs, entry{Name: ag.name + "/", Href: ag.href, Size: ag.totalSize, IsDir: true})
+	}
+
+	// Sort directories and files by the requested column.
+	sort.Slice(dirs, func(i, j int) bool {
+		if sortBy == "size" {
+			if dirs[i].Size != dirs[j].Size {
+				return dirs[i].Size < dirs[j].Size
+			}
+			return dirs[i].Name < dirs[j].Name
+		}
+		return dirs[i].Name < dirs[j].Name
+	})
+	sort.Slice(files, func(i, j int) bool {
+		if sortBy == "size" {
+			if files[i].Size != files[j].Size {
+				return files[i].Size < files[j].Size
+			}
+			return files[i].Name < files[j].Name
+		}
+		return files[i].Name < files[j].Name
+	})
 
 	// Render the HTML page.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -187,8 +235,12 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "<tr><th>Name</th><th>Size</th><th>Type</th></tr>\n")
 
 	for _, d := range dirs {
-		fmt.Fprintf(w, "<tr><td class=\"dir\"><a href=\"%s\">📁 %s</a></td><td>—</td><td>directory</td></tr>\n",
-			html.EscapeString(d.Href), html.EscapeString(d.Name))
+		sizeStr := formatSize(d.Size)
+		if d.Size == 0 {
+			sizeStr = "—"
+		}
+		fmt.Fprintf(w, "<tr><td class=\"dir\"><a href=\"%s\">📁 %s</a></td><td>%s</td><td>directory</td></tr>\n",
+			html.EscapeString(d.Href), html.EscapeString(d.Name), sizeStr)
 	}
 	for _, f := range files {
 		sizeStr := formatSize(f.Size)
