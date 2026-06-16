@@ -85,6 +85,14 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		breadcrumbs = append(breadcrumbs, breadcrumb{Name: p, Href: "/http" + accum + "/"})
 	}
 
+	// Determine href prefix for virtual mounts.
+	mountPrefix := ""
+	if hFilter != nil {
+		mountPrefix = "/" + firstSeg
+	} else if firstSeg == "__all__" {
+		mountPrefix = "/__all__"
+	}
+
 	// Build the directory listing.
 	var dirs []entry
 	var files []entry
@@ -117,20 +125,19 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			seen[displayName] = true
 			isDir = true
-			// If virtualPath is empty, the href is /http/displayName/
 			if virtualPath == "" {
-				href = "/http/" + displayName + "/"
+				href = "/http" + mountPrefix + "/" + displayName + "/"
 			} else {
-				href = "/http/" + virtualPath + "/" + displayName + "/"
+				href = "/http" + mountPrefix + "/" + virtualPath + "/" + displayName + "/"
 			}
 		} else {
 			// It's a file in this directory.
 			displayName = rel
 			isDir = false
 			if virtualPath == "" {
-				href = "/http/" + rel
+				href = "/http" + mountPrefix + "/" + rel
 			} else {
-				href = "/http/" + virtualPath + "/" + rel
+				href = "/http" + mountPrefix + "/" + virtualPath + "/" + rel
 			}
 		}
 
@@ -141,7 +148,7 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 			if mime == "" {
 				mime = "application/octet-stream"
 			}
-			fileHref := "/http/" + rec.Path
+			fileHref := "/http" + mountPrefix + "/" + rec.Path
 			files = append(files, entry{
 				Name:   displayName,
 				Href:   fileHref,
