@@ -3,8 +3,10 @@ package torbox
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -266,6 +268,52 @@ func TestGetDownloadURLEmpty(t *testing.T) {
 	}
 	if url != "" {
 		t.Errorf("expected empty URL, got %q", url)
+	}
+}
+
+type errorTransport struct {
+	err error
+}
+
+func (t *errorTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, t.err
+}
+
+func TestDoSanitizesURLFromNetworkError(t *testing.T) {
+	// Use a transport that returns a plain error. http.Client.Do() wraps it
+	// in *url.Error, which our sanitization should strip — verify the
+	// error string does not leak the API token query parameter.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Server should never be reached — transport mock returns error first.
+		t.Error("unexpected server call")
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL, "secret-key-12345")
+	// Override the HTTP client with one that fails on every request.
+	// Return a plain error (not a *url.Error) because http.Client.Do()
+	// wraps any transport error in its own *url.Error containing the full
+	// request URL with token query parameter.
+	client.httpClient = &http.Client{
+		Transport: &errorTransport{
+			err: fmt.Errorf("dial tcp: connection refused"),
+		},
+	}
+
+	_, err := client.GetDownloadURL(context.Background(), 1, 1, false)
+	if err == nil {
+		t.Fatal("expected error from broken transport, got nil")
+	}
+
+	errStr := err.Error()
+	if !strings.Contains(errStr, "/v1/api/torrents/requestdl") {
+		t.Errorf("error should contain sanitized path, got: %s", errStr)
+	}
+	if strings.Contains(errStr, "secret-key-12345") {
+		t.Errorf("error must NOT contain API token, got: %s", errStr)
+	}
+	if strings.Contains(errStr, "token=") {
+		t.Errorf("error must NOT contain 'token=' query param, got: %s", errStr)
 	}
 }
 

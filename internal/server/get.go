@@ -72,7 +72,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Range") == "" {
 		cdnURL, cdnErr := s.store.GetCDNURL(file.ID)
 		if cdnErr == nil && cdnURL != "" {
-			slog.Debug("GET: redirecting to CDN", "url", cdnURL)
+			slog.Debug("GET: redirecting to CDN", "id", file.ID)
 			http.Redirect(w, r, cdnURL, http.StatusFound)
 			return
 		}

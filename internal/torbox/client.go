@@ -7,6 +7,7 @@ package torbox
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -323,7 +324,11 @@ func (c *Client) GetUserInfo(ctx context.Context) (*UserInfo, error) {
 func (c *Client) do(req *http.Request) ([]byte, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("torbox: request failed: %w", err)
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return nil, fmt.Errorf("torbox: request %s %s failed: %w", req.Method, req.URL.Path, urlErr.Err)
+		}
+		return nil, fmt.Errorf("torbox: request %s %s failed: %w", req.Method, req.URL.Path, err)
 	}
 	defer resp.Body.Close()
 
