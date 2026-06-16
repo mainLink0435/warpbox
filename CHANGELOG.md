@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Chi-driven OpenAPI spec generation via route introspection, refs #53
 - Optional HTTP Basic Authentication for web management UI, refs #79
 - Sync worker restart action via landing page, refs #95
-- Pre-release codebase audit script (`audit script`), refs #96
+- Pre-release codebase audit script, refs #96
 - Report disclaimer and use deepseek-pro model for audits, refs #96
 - Code comment quality check in audit prompt, refs #145
 - HTTP browser folder sizes and column sorting (name, size, modified), refs #146
@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use `url.JoinPath` instead of raw string concatenation for URL construction, refs #113
 - Use `defer` for CDN connection release in non-hang streaming path, refs #112
 - Migrate all documentation to standard conventions with `docs/tech-spec.md` skeleton, refs #96
-- Move AI instructions instructions and Git Authorship rules into docs/
+- Move internal AI instructions and Git Authorship rules into docs/
 
 ### Fixed
 - HTTP browser hrefs missing virtual path mount prefix in breadcrumbs and links

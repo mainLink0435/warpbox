@@ -231,13 +231,11 @@ You are responsible for ensuring your use of warpbox complies with TorBox's curr
 
 1. Tag the current commit with a semantic version:
    ```
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.5.0
+   git push github v0.5.0
    ```
-2. The CI pipeline (`.gitea/workflows/build.yml`) automatically builds binaries for all platforms (Linux amd64/arm64, Windows amd64) and pushes Docker images to the Gitea container registry.
+2. The GitHub Actions pipeline (`.github/workflows/build.yml`) automatically builds binaries for all platforms (Linux amd64/arm64, Windows amd64), creates a release, and pushes Docker images to ghcr.io.
 3. Update `docker-compose.yml` to point to the new version tag.
-
-See `AI instructions` for versioning conventions.
 
 ## AI Usage
 
