@@ -148,11 +148,17 @@ jobs:
             -ldflags="-s -w -extldflags=-static -X main.Version=${{ steps.tag.outputs.tag }}" \
             -o dist/warpbox-windows-amd64.exe ./cmd/warpbox/
 
+      - name: Extract changelog entry
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          sed -n "/^## \[${TAG}\]/,/^## \[/p" CHANGELOG.md | sed '$d' > release_body.md
+          [ -s release_body.md ] || echo "Warpbox ${TAG}" > release_body.md
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          body_path: CHANGELOG.md
+          body_path: release_body.md
           files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
