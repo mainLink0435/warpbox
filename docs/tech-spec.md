@@ -279,7 +279,7 @@ Per-item (torrent or usenet) failure tracker stored in `s.torrentFailures`:
    - **Other non-2xx:** `502 Bad Gateway` to client
    - **200/206:** Proceed to streaming
 
-5. **CDN connection semaphore.** Before proxy streaming, `AcquireCDNConn()` blocks until a slot is available. `ReleaseCDNConn()` returns the slot when done. Capacity: `max_cdn_connections` (default 8). Channel-based with pre-filled tokens.
+5. **CDN connection semaphore.** Before proxy streaming, `AcquireCDNConn()` blocks until a slot is available. `ReleaseCDNConn()` returns the slot when done. Capacity: `max_cdn_connections` (default 4). Channel-based with pre-filled tokens.
 
 6. **Streaming.** Set response headers:
    - `Content-Type`: from file's MIME type, or `"application/octet-stream"`
@@ -748,7 +748,7 @@ YAML. Parsed with `gopkg.in/yaml.v3` (preserves comments on round-trip). The con
 | `negative_cache_max_entries` | int (pointer) | `5000` | 100–50000 | Max negative cache entries |
 | `circuit_breaker_max_entries` | int (pointer) | `2000` | 50–20000 | Max circuit breaker entries |
 | `cleanup_interval_seconds` | int (pointer) | `60` | 10–3600 | Cache sweep interval |
-| `max_cdn_connections` | int (pointer) | `8` | 1–64 | Max concurrent CDN proxy connections |
+| `max_cdn_connections` | int (pointer) | `4` | 1–64 | Max concurrent CDN proxy connections |
 
 #### 4. `throttle`
 | Key | Type | Default | Validation | Description |

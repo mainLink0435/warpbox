@@ -47,7 +47,7 @@ type CacheConfig struct {
 	CleanupIntervalSeconds    *int `yaml:"cleanup_interval_seconds"`     // Sweep interval; nil→default 60
 
 	// CDN proxy settings.
-	MaxCDNConnections *int `yaml:"max_cdn_connections"` // Max concurrent CDN proxy connections; nil→default 8
+	MaxCDNConnections *int `yaml:"max_cdn_connections"` // Max concurrent CDN proxy connections; nil→default 4
 }
 
 // ThrottleConfig holds rate-limiting settings.
@@ -188,7 +188,7 @@ func setDefaults(c *Config) {
 		c.Cache.CleanupIntervalSeconds = &n
 	}
 	if c.Cache.MaxCDNConnections == nil {
-		n := 8
+		n := 4
 		c.Cache.MaxCDNConnections = &n
 	}
 	if c.Auth.Username == "" {

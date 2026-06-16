@@ -73,8 +73,8 @@ cache:
   # cleanup_interval_seconds: 60
 
   # Maximum concurrent CDN proxy connections.
-  # Default: 8
-  # max_cdn_connections: 8
+  # Default: 4
+  # max_cdn_connections: 4
 
 throttle:
   # Maximum sustained TorBox API requests per minute.
