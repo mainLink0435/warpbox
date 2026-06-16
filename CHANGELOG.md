@@ -172,11 +172,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- Consolidate all health/metrics collection into a single DB-backed source of truth — remove redundant 5-minute memory stats log ticker (`cache.memory_stats_interval_minutes` config key removed), closes #98
-- Drop misleading "total allocated" (cumulative odometer) from landing page and chart — add `gc_cycles`, `heap_objects`, and `db_lock_errors` charts instead, closes #99
+## [v0.5.0] - 2026-06-16
 
-[Unreleased]: https://REDACTED/ben/warpbox/compare/v0.4.0...HEAD
+### Added
+- Virtual library paths with directory/file regex filtering and change hooks, refs #32 #33
+- Chi router for structured HTTP routing with middleware support, refs #43
+- Chi-driven OpenAPI spec generation via route introspection, refs #53
+- Optional HTTP Basic Authentication for web management UI, refs #79
+- Sync worker restart action via landing page, refs #95
+- Pre-release codebase audit script (`audit script`), refs #96
+- Report disclaimer and use deepseek-pro model for audits, refs #96
+- Code comment quality check in audit prompt, refs #145
+- HTTP browser folder sizes and column sorting (name, size, modified), refs #146
+- `/healthz` endpoint for container health checks, refs #111
+- Audit self-reports now emit individual issue findings with run metadata, refs #147
+
+### Changed
+- Consolidate health/metrics into single DB-backed source of truth — remove redundant 5-minute memory stats log ticker (`cache.memory_stats_interval_minutes` removed), closes #98, closes #99
+- Replace `directory_regex` with `directory_include` / `directory_exclude` for path filtering
+- Replace `sync.Cond` with channel-based throttle queue to prevent goroutine leak, refs #142
+- Use `url.JoinPath` instead of raw string concatenation for URL construction, refs #113
+- Use `defer` for CDN connection release in non-hang streaming path, refs #112
+- Migrate all documentation to standard conventions with `docs/tech-spec.md` skeleton, refs #96
+- Move AI instructions instructions and Git Authorship rules into docs/
+
+### Fixed
+- HTTP browser hrefs missing virtual path mount prefix in breadcrumbs and links
+- Virtual paths now correctly nested under `/webdav/` as subdirectories
+- Remove DEBUG-level per-row UpsertFile logging that flooded logs during sync
+- Record `gc_cycles` as per-interval delta instead of cumulative gauge in stats charts
+- Replace `torrent_id` with `item_id` in dbinspect queries, refs #141
+- Gate `/debug/pprof/` behind `enable_pprof` config flag, wire SyncLimit, fix stale comment, refs #107, refs #108, refs #140
+- Batch prune deletes and retry SetCDNURL to prevent SQLite lock contention, refs #100
+- Remove live API credentials from repo — switch to `.template` files, refs #143
+- Fix pre-release audit documentation issues across multiple tickets, refs #109 #110 #138 #139
+
+## [v0.4.0] - 2026-06-13
+
+### Added
+- Config validation — every tunable field now has strict range checking with clear error messages instead of silent clamping, refs #97
+- HTTP streaming endpoint at `/http/` for direct file serving through Warpbox, closes #25
+- Display TorBox account details (plan, email, storage used) on the landing page, refs #93
+
+### Changed
+- Remove RAM byte-range cache — all data passes through the CDN proxy without an intermediate memory buffer
+
+### Fixed
+- Record per-interval deltas for counter metrics in stats charts (previously showed cumulative values), refs #89
+- Highlight active log level button on landing page and prevent re-clicking the already-selected level, refs #90
+- Lower CDN streaming copy error logs from ERROR to DEBUG to reduce noise from connection races
+[Unreleased]: https://REDACTED/ben/warpbox/compare/v0.5.0...HEAD
+[v0.5.0]: https://REDACTED/ben/warpbox/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://REDACTED/ben/warpbox/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://REDACTED/ben/warpbox/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://REDACTED/ben/warpbox/compare/v0.2.3...v0.3.0
