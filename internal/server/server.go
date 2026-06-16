@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -383,15 +384,9 @@ func (s *Server) sweepNegativeCache() {
 		for k, v := range s.negativeCache {
 			sorted = append(sorted, kv{key: k, expiresAt: v.expiresAt})
 		}
-		for i := 0; i < len(sorted) && i < over; i++ {
-			oldest := i
-			for j := i + 1; j < len(sorted); j++ {
-				if sorted[j].expiresAt.Before(sorted[oldest].expiresAt) {
-					oldest = j
-				}
-			}
-			sorted[i], sorted[oldest] = sorted[oldest], sorted[i]
-		}
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].expiresAt.Before(sorted[j].expiresAt)
+		})
 		for i := 0; i < over; i++ {
 			delete(s.negativeCache, sorted[i].key)
 		}
@@ -425,15 +420,9 @@ func (s *Server) sweepCircuitBreaker() {
 		for k, v := range s.torrentFailures {
 			sorted = append(sorted, kv{key: k, staleUntil: v.staleUntil})
 		}
-		for i := 0; i < len(sorted) && i < over; i++ {
-			oldest := i
-			for j := i + 1; j < len(sorted); j++ {
-				if sorted[j].staleUntil.Before(sorted[oldest].staleUntil) {
-					oldest = j
-				}
-			}
-			sorted[i], sorted[oldest] = sorted[oldest], sorted[i]
-		}
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].staleUntil.Before(sorted[j].staleUntil)
+		})
 		for i := 0; i < over; i++ {
 			delete(s.torrentFailures, sorted[i].key)
 		}
