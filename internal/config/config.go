@@ -76,10 +76,11 @@ type StatsConfig struct {
 
 // VirtualPathConfig holds a single virtual path with its filters.
 type VirtualPathConfig struct {
-	Name            string `yaml:"name"`              // Virtual directory name, e.g. "movies"
-	DirectoryRegex  string `yaml:"directory_regex"`   // Regex applied to torrent directory names
-	FileRegex       string `yaml:"file_regex"`        // Regex applied to file paths within torrents
-	LargestFileOnly bool   `yaml:"largest_file_only"` // Show only the largest file per torrent
+	Name             string `yaml:"name"`               // Virtual directory name, e.g. "movies"
+	DirectoryInclude string `yaml:"directory_include"`  // Include dirs matching this regex
+	DirectoryExclude string `yaml:"directory_exclude"`  // Exclude dirs matching this regex
+	FileRegex        string `yaml:"file_regex"`         // Regex applied to file paths within torrents
+	LargestFileOnly  bool   `yaml:"largest_file_only"`  // Show only the largest file per torrent
 }
 
 // LibraryConfig holds settings for the virtual library feature.
@@ -323,9 +324,14 @@ func validateLibrary(l *LibraryConfig) error {
 		}
 		seen[name] = true
 
-		if vp.DirectoryRegex != "" {
-			if _, err := regexp.Compile(vp.DirectoryRegex); err != nil {
-				return fmt.Errorf("library.virtual_paths[%d].directory_regex: %w", i, err)
+		if vp.DirectoryInclude != "" {
+			if _, err := regexp.Compile(vp.DirectoryInclude); err != nil {
+				return fmt.Errorf("library.virtual_paths[%d].directory_include: %w", i, err)
+			}
+		}
+		if vp.DirectoryExclude != "" {
+			if _, err := regexp.Compile(vp.DirectoryExclude); err != nil {
+				return fmt.Errorf("library.virtual_paths[%d].directory_exclude: %w", i, err)
 			}
 		}
 		if vp.FileRegex != "" {

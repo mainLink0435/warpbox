@@ -109,10 +109,13 @@ library:
   # The raw /webdav mount (__all__) always shows everything unfiltered.
   # virtual_paths:
   #   - name: movies
-  #     directory_regex: "(?i)(19|20)([0-9]{2})"
+  #     directory_exclude: "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)|\\b(saison|stage)\\.?\\d|[a-z]\\s?-\\s?\\d{2,4}\\b|\\d{2,4}\\s?-\\s?\\d{2,4}\\b"
   #     file_regex: ".*\\.(mkv|mp4|avi)$"
   #     largest_file_only: true
   #   - name: tv
+  #     directory_include: "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)|\\b(saison|stage)\\.?\\d|[a-z]\\s?-\\s?\\d{2,4}\\b|\\d{2,4}\\s?-\\s?\\d{2,4}\\b"
+  #     file_regex: ".*\\.(mkv|mp4|avi)$"
+  #     largest_file_only: true
   #     directory_regex: "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)|\\b(saison|stage)\\.?\\d|[a-z]\\s?-\\s?\\d{2,4}\\b|\\d{2,4}\\s?-\\s?\\d{2,4}\\b"
   #     file_regex: ".*\\.(mkv|mp4|avi)$"
   #     largest_file_only: true

@@ -414,11 +414,11 @@ torbox:
 library:
   virtual_paths:
     - name: "movies"
-      directory_regex: "(?i)(19|20)([0-9]{2})"
+      directory_include: "(?i)(19|20)([0-9]{2})"
       file_regex: ".*\\.(mkv|mp4|avi)$"
       largest_file_only: true
     - name: "tv"
-      directory_regex: "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)"
+      directory_include: "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)"
       file_regex: ".*\\.(mkv|mp4|avi)$"
       largest_file_only: false
   on_items_added: "sh /path/to/script.sh"
@@ -461,7 +461,7 @@ torbox:
 library:
   virtual_paths:
     - name: "movies"
-      directory_regex: "[invalid"
+      directory_include: "[invalid"
 `)
 	tmp := t.TempDir() + "/config.yml"
 	if err := os.WriteFile(tmp, content, 0644); err != nil {
@@ -469,7 +469,7 @@ library:
 	}
 	_, err := Load(tmp)
 	if err == nil {
-		t.Fatal("expected error for invalid directory_regex")
+		t.Fatal("expected error for invalid directory_include")
 	}
 }
 
@@ -499,9 +499,9 @@ torbox:
 library:
   virtual_paths:
     - name: "movies"
-      directory_regex: "(?i)1999"
+      directory_include: "(?i)1999"
     - name: "movies"
-      directory_regex: "(?i)2000"
+      directory_include: "(?i)2000"
 `)
 	tmp := t.TempDir() + "/config.yml"
 	if err := os.WriteFile(tmp, content, 0644); err != nil {

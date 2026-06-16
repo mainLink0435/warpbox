@@ -203,7 +203,7 @@ func New(cfg Config, store *metadata.Store, torBox *torbox.Client, queue *thrott
 func buildFilters(vps []config.VirtualPathConfig) ([]*library.Filter, error) {
 	filters := make([]*library.Filter, 0, len(vps))
 	for _, vp := range vps {
-		f, err := library.NewFilter("/"+vp.Name, vp.DirectoryRegex, vp.FileRegex, vp.LargestFileOnly)
+		f, err := library.NewFilter("/"+vp.Name, vp.DirectoryInclude, vp.DirectoryExclude, vp.FileRegex, vp.LargestFileOnly)
 		if err != nil {
 			return nil, fmt.Errorf("building filter for %q: %w", vp.Name, err)
 		}

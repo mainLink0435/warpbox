@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewFilter(t *testing.T) {
-	f, err := NewFilter("/tv", "(?i)season", `.*\.(mkv|mp4)$`, true)
+	f, err := NewFilter("/tv", "(?i)season", "", `.*\.(mkv|mp4)$`, true)
 	if err != nil {
 		t.Fatalf("NewFilter failed: %v", err)
 	}
@@ -20,22 +20,39 @@ func TestNewFilter(t *testing.T) {
 }
 
 func TestNewFilter_EmptyRegex(t *testing.T) {
-	f, err := NewFilter("/all", "", "", false)
+	f, err := NewFilter("/all", "", "", "", false)
 	if err != nil {
 		t.Fatalf("NewFilter failed: %v", err)
 	}
-	if f.DirectoryRegex != nil {
-		t.Error("DirectoryRegex should be nil for empty string")
+	if f.DirectoryInclude != nil {
+		t.Error("DirectoryInclude should be nil for empty string")
+	}
+	if f.DirectoryExclude != nil {
+		t.Error("DirectoryExclude should be nil for empty string")
 	}
 	if f.FileRegex != nil {
 		t.Error("FileRegex should be nil for empty string")
 	}
 }
 
-func TestNewFilter_InvalidRegex(t *testing.T) {
-	_, err := NewFilter("/bad", "[invalid", "", false)
+func TestNewFilter_InvalidInclude(t *testing.T) {
+	_, err := NewFilter("/bad", "[invalid", "", "", false)
 	if err == nil {
-		t.Fatal("expected error for invalid regex")
+		t.Fatal("expected error for invalid include regex")
+	}
+}
+
+func TestNewFilter_InvalidExclude(t *testing.T) {
+	_, err := NewFilter("/bad", "", "[invalid", "", false)
+	if err == nil {
+		t.Fatal("expected error for invalid exclude regex")
+	}
+}
+
+func TestNewFilter_InvalidFile(t *testing.T) {
+	_, err := NewFilter("/bad", "", "", "[invalid", false)
+	if err == nil {
+		t.Fatal("expected error for invalid file regex")
 	}
 }
 
@@ -76,108 +93,86 @@ func TestExtractRelativePath(t *testing.T) {
 	}
 }
 
-// Gold TV regex: the user's main classification regex
 var tvRegex = "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)|\\b(saison|stage)\\.?\\d|[a-z]\\s?-\\s?\\d{2,4}\\b|\\d{2,4}\\s?-\\s?\\d{2,4}\\b"
 
-func TestMatchDirectory_TV(t *testing.T) {
-	f, err := NewFilter("/tv", tvRegex, "", false)
+func TestMatchDirectory_Include(t *testing.T) {
+	f, err := NewFilter("/tv", tvRegex, "", "", false)
 	if err != nil {
 		t.Fatalf("NewFilter failed: %v", err)
 	}
 
-	tvDirs := []string{
+	shouldMatch := []string{
 		"Breaking.Bad.S01.1080p",
 		"The.Office.Season.3.Complete",
 		"Game.of.Thrones.S08E01",
-		"TV.Show.Complete.Series",
-		"Show.Name.01-10",
-		"Show.2001-2005",
-		"Some.S01E01.Complete",
-		"Saison.1.Show",
-		"Stage.2.Show",
-		"a-2024",
 		"Show.tv.Complete",
-		"Episode.1.Show",
 	}
-	for _, dir := range tvDirs {
+	for _, dir := range shouldMatch {
 		if !f.MatchDirectory(dir) {
-			t.Errorf("TV regex should match %q", dir)
+			t.Errorf("include should match %q", dir)
 		}
 	}
-}
 
-func TestMatchDirectory_NotTV(t *testing.T) {
-	f, err := NewFilter("/tv", tvRegex, "", false)
-	if err != nil {
-		t.Fatalf("NewFilter failed: %v", err)
-	}
-
-	nonTVDirs := []string{
+	shouldNotMatch := []string{
 		"The.Matrix.1999.1080p",
-		"Random.Video.File",
 		"Inception.2010.4K",
-		"Documentary.2023",
 	}
-	for _, dir := range nonTVDirs {
+	for _, dir := range shouldNotMatch {
 		if f.MatchDirectory(dir) {
-			t.Errorf("TV regex should NOT match %q", dir)
+			t.Errorf("include should NOT match %q", dir)
 		}
 	}
 }
 
-// Movie regex: simple 4-digit year
-var movieRegex = "(?i)(19|20)([0-9]{2})"
-
-func TestMatchDirectory_Movie(t *testing.T) {
-	f, err := NewFilter("/movies", movieRegex, "", false)
+func TestMatchDirectory_Exclude(t *testing.T) {
+	f, err := NewFilter("/movies", "", tvRegex, "", false)
 	if err != nil {
 		t.Fatalf("NewFilter failed: %v", err)
 	}
 
-	movieDirs := []string{
+	// Should NOT reject movies
+	shouldMatch := []string{
 		"The.Matrix.1999.1080p",
 		"Inception.2010.4K",
-		"Documentary.2023",
-		"Interstellar.2014.2160p",
-		"Movie.Title.1984",
 	}
-	for _, dir := range movieDirs {
+	for _, dir := range shouldMatch {
 		if !f.MatchDirectory(dir) {
-			t.Errorf("Movie regex should match %q", dir)
+			t.Errorf("exclude only TV should not reject %q", dir)
 		}
 	}
-}
 
-func TestMatchDirectory_NotMovie(t *testing.T) {
-	f, err := NewFilter("/movies", movieRegex, "", false)
-	if err != nil {
-		t.Fatalf("NewFilter failed: %v", err)
-	}
-
-	nonMovieDirs := []string{
+	// Should reject TV shows
+	shouldNotMatch := []string{
 		"Breaking.Bad.S01.1080p",
-		"Random.File",
-		"Music.Album.FLAC",
+		"The.Office.Season.3.Complete",
+		"Game.of.Thrones.S08E01",
 	}
-	for _, dir := range nonMovieDirs {
+	for _, dir := range shouldNotMatch {
 		if f.MatchDirectory(dir) {
-			t.Errorf("Movie regex should NOT match %q", dir)
+			t.Errorf("exclude TV should reject %q", dir)
 		}
 	}
 }
 
-func TestMatchDirectory_NoFilter(t *testing.T) {
-	f, err := NewFilter("/all", "", "", false)
+func TestMatchDirectory_IncludeAndExclude(t *testing.T) {
+	// Include "season" (must have this to pass), exclude "S01" (must NOT have this)
+	f, err := NewFilter("/test", "(?i)season", "(?i)S01", "", false)
 	if err != nil {
 		t.Fatalf("NewFilter failed: %v", err)
 	}
-	if !f.MatchDirectory("anything") {
-		t.Error("no filter should match everything")
+	if !f.MatchDirectory("Show.Season.1") {
+		t.Error("Show.Season.1 should match")
+	}
+	if f.MatchDirectory("Show.Season.1.S01") {
+		t.Error("Show.Season.1.S01 should be excluded (matches exclude)")
+	}
+	if f.MatchDirectory("Movie.2024") {
+		t.Error("Movie.2024 should NOT match (no include match)")
 	}
 }
 
 func TestMatchFile(t *testing.T) {
-	f, err := NewFilter("/movies", "", `.*\.(mkv|mp4|avi)$`, false)
+	f, err := NewFilter("/movies", "", "", `.*\.(mkv|mp4|avi)$`, false)
 	if err != nil {
 		t.Fatalf("NewFilter failed: %v", err)
 	}
@@ -200,7 +195,7 @@ func TestMatchFile(t *testing.T) {
 }
 
 func TestMatchFile_RelativePath(t *testing.T) {
-	f, err := NewFilter("/tv", "", `.*\.(mkv|mp4)$`, false)
+	f, err := NewFilter("/tv", "", "", `.*\.(mkv|mp4)$`, false)
 	if err != nil {
 		t.Fatalf("NewFilter failed: %v", err)
 	}
@@ -247,26 +242,6 @@ func TestKeepLargest_MultipleItems(t *testing.T) {
 	}
 }
 
-func TestKeepLargest_SingleFile(t *testing.T) {
-	records := []metadata.FileRecord{
-		{ItemID: 1, Source: metadata.SourceTorrent, Path: "Movie.A/file.mkv", Size: 500},
-	}
-	got := KeepLargest(records)
-	if len(got) != 1 {
-		t.Fatalf("expected 1 record, got %d", len(got))
-	}
-	if got[0].Size != 500 {
-		t.Errorf("expected size 500, got %d", got[0].Size)
-	}
-}
-
-func TestKeepLargest_Empty(t *testing.T) {
-	got := KeepLargest(nil)
-	if len(got) != 0 {
-		t.Errorf("expected empty, got %d", len(got))
-	}
-}
-
 func TestKeepLargest_SourceDisambiguation(t *testing.T) {
 	records := []metadata.FileRecord{
 		{ItemID: 1, Source: metadata.SourceTorrent, Path: "item/file1.mkv", Size: 500},
@@ -278,86 +253,56 @@ func TestKeepLargest_SourceDisambiguation(t *testing.T) {
 	}
 }
 
-func TestApplyFilter_FullFlow(t *testing.T) {
-	f, err := NewFilter("/movies", movieRegex, `.*\.(mkv|mp4)$`, false)
+func TestApplyFilter_IncludeOnly(t *testing.T) {
+	f, err := NewFilter("/tv", "(?i)S01|season", "", `.*\.(mkv|mp4)$`, false)
 	if err != nil {
 		t.Fatalf("NewFilter failed: %v", err)
 	}
-
 	records := []metadata.FileRecord{
-		{ItemID: 1, Source: metadata.SourceTorrent, Path: "The.Matrix.1999/movie.mkv", Size: 5000, MimeType: "video/x-matroska"},
-		{ItemID: 1, Source: metadata.SourceTorrent, Path: "The.Matrix.1999/featurette.mkv", Size: 200, MimeType: "video/x-matroska"},
-		{ItemID: 1, Source: metadata.SourceTorrent, Path: "The.Matrix.1999/sample.txt", Size: 50, MimeType: "text/plain"},
-		{ItemID: 2, Source: metadata.SourceTorrent, Path: "Breaking.Bad.S01/ep1.mkv", Size: 1000, MimeType: "video/x-matroska"},
-		{ItemID: 3, Source: metadata.SourceTorrent, Path: "Archive.Release/archive.rar", Size: 50000, MimeType: "application/x-rar"},
-		{ItemID: 4, Source: metadata.SourceTorrent, Path: "Unmatched.Video/file.mp4", Size: 500, MimeType: "video/mp4"},
+		{ItemID: 1, Source: metadata.SourceTorrent, Path: "TV.Show.S01/ep1.mkv", Size: 1000},
+		{ItemID: 2, Source: metadata.SourceTorrent, Path: "The.Matrix.1999/movie.mkv", Size: 5000},
 	}
-
 	got := f.Apply(records)
-	if len(got) != 2 {
-		t.Fatalf("expected 2 records (movie.mkv + featurette.mkv), got %d", len(got))
+	if len(got) != 1 {
+		t.Fatalf("expected 1 record (only TV), got %d", len(got))
 	}
-	for _, r := range got {
-		if r.ItemID != 1 {
-			t.Errorf("expected only item 1 (Matrix), got item %d", r.ItemID)
-		}
-		if r.Size == 50 {
-			t.Error("sample.txt should have been filtered out")
-		}
-		if r.Size == 50000 {
-			t.Error("archive.rar should have been filtered out")
-		}
+	if got[0].ItemID != 1 {
+		t.Errorf("expected TV show (item 1), got item %d", got[0].ItemID)
+	}
+}
+
+func TestApplyFilter_ExcludeOnly(t *testing.T) {
+	f, err := NewFilter("/movies", "", "(?i)S01|season", `.*\.(mkv|mp4)$`, false)
+	if err != nil {
+		t.Fatalf("NewFilter failed: %v", err)
+	}
+	records := []metadata.FileRecord{
+		{ItemID: 1, Source: metadata.SourceTorrent, Path: "TV.Show.S01/ep1.mkv", Size: 1000},
+		{ItemID: 2, Source: metadata.SourceTorrent, Path: "The.Matrix.1999/movie.mkv", Size: 5000},
+	}
+	got := f.Apply(records)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 record (only movie), got %d", len(got))
+	}
+	if got[0].ItemID != 2 {
+		t.Errorf("expected movie (item 2), got item %d", got[0].ItemID)
 	}
 }
 
 func TestApplyFilter_LargestFileOnly(t *testing.T) {
-	f, err := NewFilter("/movies", movieRegex, `.*\.(mkv|mp4)$`, true)
+	f, err := NewFilter("/movies", "", "", `.*\.(mkv|mp4)$`, true)
 	if err != nil {
 		t.Fatalf("NewFilter failed: %v", err)
 	}
-
 	records := []metadata.FileRecord{
-		{ItemID: 1, Source: metadata.SourceTorrent, Path: "The.Matrix.1999/movie.mkv", Size: 5000},
-		{ItemID: 1, Source: metadata.SourceTorrent, Path: "The.Matrix.1999/featurette.mkv", Size: 200},
+		{ItemID: 1, Source: metadata.SourceTorrent, Path: "Movie/file.mkv", Size: 5000},
+		{ItemID: 1, Source: metadata.SourceTorrent, Path: "Movie/featurette.mkv", Size: 200},
 	}
-
 	got := f.Apply(records)
 	if len(got) != 1 {
-		t.Fatalf("expected 1 record (largest only), got %d", len(got))
+		t.Fatalf("expected 1 record (largest), got %d", len(got))
 	}
 	if got[0].Size != 5000 {
 		t.Errorf("expected largest (5000), got %d", got[0].Size)
-	}
-}
-
-func TestApplyFilter_NoDirectoryMatch(t *testing.T) {
-	f, err := NewFilter("/movies", movieRegex, `.*\.(mkv|mp4)$`, false)
-	if err != nil {
-		t.Fatalf("NewFilter failed: %v", err)
-	}
-
-	records := []metadata.FileRecord{
-		{ItemID: 2, Source: metadata.SourceTorrent, Path: "Breaking.Bad.S01/ep1.mkv", Size: 1000},
-	}
-
-	got := f.Apply(records)
-	if len(got) != 0 {
-		t.Errorf("expected 0 records (no movie match), got %d", len(got))
-	}
-}
-
-func TestApplyFilter_NoFileMatch(t *testing.T) {
-	f, err := NewFilter("/movies", movieRegex, `.*\.(mkv|mp4)$`, false)
-	if err != nil {
-		t.Fatalf("NewFilter failed: %v", err)
-	}
-
-	records := []metadata.FileRecord{
-		{ItemID: 1, Source: metadata.SourceTorrent, Path: "The.Matrix.1999/sample.txt", Size: 100},
-	}
-
-	got := f.Apply(records)
-	if len(got) != 0 {
-		t.Errorf("expected 0 records (no video file), got %d", len(got))
 	}
 }

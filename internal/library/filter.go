@@ -8,20 +8,28 @@ import (
 )
 
 type Filter struct {
-	Mount           string
-	DirectoryRegex  *regexp.Regexp
-	FileRegex       *regexp.Regexp
-	LargestFileOnly bool
+	Mount             string
+	DirectoryInclude  *regexp.Regexp
+	DirectoryExclude  *regexp.Regexp
+	FileRegex         *regexp.Regexp
+	LargestFileOnly   bool
 }
 
-func NewFilter(mount, directoryRegex, fileRegex string, largestFileOnly bool) (*Filter, error) {
+func NewFilter(mount, dirInclude, dirExclude, fileRegex string, largestFileOnly bool) (*Filter, error) {
 	f := &Filter{Mount: mount, LargestFileOnly: largestFileOnly}
-	if directoryRegex != "" {
-		r, err := regexp.Compile(directoryRegex)
+	if dirInclude != "" {
+		r, err := regexp.Compile(dirInclude)
 		if err != nil {
 			return nil, err
 		}
-		f.DirectoryRegex = r
+		f.DirectoryInclude = r
+	}
+	if dirExclude != "" {
+		r, err := regexp.Compile(dirExclude)
+		if err != nil {
+			return nil, err
+		}
+		f.DirectoryExclude = r
 	}
 	if fileRegex != "" {
 		r, err := regexp.Compile(fileRegex)
@@ -48,10 +56,13 @@ func ExtractRelativePath(path string) string {
 }
 
 func (f *Filter) MatchDirectory(name string) bool {
-	if f.DirectoryRegex == nil {
-		return true
+	if f.DirectoryInclude != nil && !f.DirectoryInclude.MatchString(name) {
+		return false
 	}
-	return f.DirectoryRegex.MatchString(name)
+	if f.DirectoryExclude != nil && f.DirectoryExclude.MatchString(name) {
+		return false
+	}
+	return true
 }
 
 func (f *Filter) MatchFile(relPath string) bool {

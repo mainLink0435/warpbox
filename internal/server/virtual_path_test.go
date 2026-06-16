@@ -40,7 +40,7 @@ func TestVirtualPathRoot_ShowsSyntheticDirs(t *testing.T) {
 	cfg := Config{
 		Version: "test",
 		VirtualPaths: []config.VirtualPathConfig{
-			{Name: "movies", DirectoryRegex: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
+			{Name: "movies", DirectoryInclude: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
 		},
 	}
 	queue := throttle.NewQueue(600)
@@ -79,7 +79,7 @@ func TestVirtualPath_All_ShowsEverything(t *testing.T) {
 	cfg := Config{
 		Version: "test",
 		VirtualPaths: []config.VirtualPathConfig{
-			{Name: "movies", DirectoryRegex: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
+			{Name: "movies", DirectoryInclude: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
 		},
 	}
 	queue := throttle.NewQueue(600)
@@ -111,7 +111,7 @@ func TestVirtualPath_MoviesFilter(t *testing.T) {
 	cfg := Config{
 		Version: "test",
 		VirtualPaths: []config.VirtualPathConfig{
-			{Name: "movies", DirectoryRegex: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
+			{Name: "movies", DirectoryInclude: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
 		},
 	}
 	queue := throttle.NewQueue(600)
@@ -146,7 +146,7 @@ func TestVirtualPath_MoviesDirectoryContents(t *testing.T) {
 	cfg := Config{
 		Version: "test",
 		VirtualPaths: []config.VirtualPathConfig{
-			{Name: "movies", DirectoryRegex: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
+			{Name: "movies", DirectoryInclude: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
 		},
 	}
 	queue := throttle.NewQueue(600)
@@ -179,7 +179,7 @@ func TestVirtualPath_TVFilter(t *testing.T) {
 	cfg := Config{
 		Version: "test",
 		VirtualPaths: []config.VirtualPathConfig{
-			{Name: "tv", DirectoryRegex: "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)", FileRegex: `.*\.(mkv|mp4)$`},
+			{Name: "tv", DirectoryInclude: "(?i)(season|episode)s?\\.?\\d?|[se]\\d\\d|\\b(tv|complete)", FileRegex: `.*\.(mkv|mp4)$`},
 		},
 	}
 	queue := throttle.NewQueue(600)
@@ -214,7 +214,7 @@ func TestVirtualPath_LargestFileOnly(t *testing.T) {
 	cfg := Config{
 		Version: "test",
 		VirtualPaths: []config.VirtualPathConfig{
-			{Name: "movies", DirectoryRegex: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`, LargestFileOnly: true},
+			{Name: "movies", DirectoryInclude: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`, LargestFileOnly: true},
 		},
 	}
 	queue := throttle.NewQueue(600)
@@ -290,7 +290,7 @@ func TestVirtualPath_GETDirListing(t *testing.T) {
 	cfg := Config{
 		Version: "test",
 		VirtualPaths: []config.VirtualPathConfig{
-			{Name: "movies", DirectoryRegex: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
+			{Name: "movies", DirectoryInclude: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
 		},
 	}
 	queue := throttle.NewQueue(600)
@@ -325,7 +325,7 @@ func TestVirtualPath_WithinDirectoryFilter(t *testing.T) {
 	cfg := Config{
 		Version: "test",
 		VirtualPaths: []config.VirtualPathConfig{
-			{Name: "movies", DirectoryRegex: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`, LargestFileOnly: true},
+			{Name: "movies", DirectoryInclude: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`, LargestFileOnly: true},
 		},
 	}
 	queue := throttle.NewQueue(600)
@@ -362,7 +362,7 @@ func TestVirtualPath_ArchiveHiddenFromMovie(t *testing.T) {
 	cfg := Config{
 		Version: "test",
 		VirtualPaths: []config.VirtualPathConfig{
-			{Name: "movies", DirectoryRegex: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
+			{Name: "movies", DirectoryInclude: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
 		},
 	}
 	queue := throttle.NewQueue(600)
@@ -389,7 +389,7 @@ func TestInfuseVirtualPath(t *testing.T) {
 	cfg := Config{
 		Version: "test",
 		VirtualPaths: []config.VirtualPathConfig{
-			{Name: "movies", DirectoryRegex: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
+			{Name: "movies", DirectoryInclude: "(?i)(19|20)([0-9]{2})", FileRegex: `.*\.(mkv|mp4|avi)$`},
 		},
 	}
 	queue := throttle.NewQueue(600)
