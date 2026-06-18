@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.5.3] - 2026-06-19
+
+### Fixed
+- Set `largest_file_only: false` for `tv` virtual path — season packs now show all episode files instead of just one, refs #172
+- Remove `:ro` from docker-compose config volume mount so `GenerateTemplate` can create `config.yml` on first run, refs #172
+
 ## [v0.5.2] - 2026-06-16
 
 ### Fixed
@@ -67,7 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove live API credentials from repo — switch to `.template` files, refs #143
 - Fix pre-release audit documentation issues across multiple tickets, refs #109 #110 #138 #139
 
-[Unreleased]: /compare/v0.5.2...HEAD
+[Unreleased]: /compare/v0.5.3...HEAD
+
+[v0.5.3]: /compare/v0.5.2...v0.5.3
 
 [v0.5.2]: /compare/v0.5.1...v0.5.2
 
