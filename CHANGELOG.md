@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.5.4] - 2026-06-23
+
 ### Added
-- Configurable sync retry: `sync.retry_attempts` and `sync.retry_backoff` control exponential backoff for transient API errors during metadata sync
-- `torbox.IsRetryable()` function for unified transient error detection (429, 5xx, timeouts, HTML responses, network errors)
-- HTML response body logging on JSON unmarshal failure — non-JSON responses (Cloudflare error pages) are logged at WARN with preview and DEBUG with full body
-- CDN 403/404 failures after repair exhaustion are cached in the negative cache, preventing retry storms from burning TorBox API calls
+- Configurable sync retry: `sync.retry_attempts` (default 3) and `sync.retry_backoff` (default 1s) control exponential backoff for transient API errors during metadata sync
 
 ### Fixed
+- TorBox API transient errors (502, timeouts, HTML error pages) during metadata sync now trigger retry with exponential backoff instead of failing immediately
+- TorBox API returning HTML error pages with HTTP 200 now logs the body at WARN (200-char preview) and DEBUG (full body) instead of a cryptic `invalid character '<'` error
+- CDN 403/404 failures after URL repair exhaustion are cached in the negative cache, preventing Plex retry storms from burning TorBox API calls
 - Pre-existing data race in `Status()`/`syncOnce()` on `lastError`/`lastSuccess` — now protected by mutex
 
 ## [v0.5.3] - 2026-06-19
@@ -82,7 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove live API credentials from repo — switch to `.template` files, refs #143
 - Fix pre-release audit documentation issues across multiple tickets, refs #109 #110 #138 #139
 
-[Unreleased]: /compare/v0.5.3...HEAD
+[Unreleased]: /compare/v0.5.4...HEAD
+
+[v0.5.4]: /compare/v0.5.3...v0.5.4
 
 [v0.5.3]: /compare/v0.5.2...v0.5.3
 
