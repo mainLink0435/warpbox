@@ -142,60 +142,91 @@ type ListFilesParams struct {
 }
 
 // listGeneric calls any mylist-style endpoint and decodes the response.
+// listPageSize is the per-request window used when paginating the mylist
+// endpoints. It MUST stay at or below TorBox's per-response cap (observed
+// 10,000) so that a full page reliably equals listPageSize and signals "more
+// pages follow" — a page shorter than this marks the end. Kept well under the
+// cap for headroom in case TorBox lowers it.
+const listPageSize = 1000
+
 func (c *Client) listGeneric(ctx context.Context, endpoint, label string, params ListFilesParams) ([]Torrent, error) {
 	base, err := url.Parse(c.baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("torbox: invalid base URL: %w", err)
 	}
-	u := base.JoinPath(endpoint)
-	q := u.Query()
-	q.Set("bypass_cache", strconv.FormatBool(params.BypassCache))
-	q.Set("offset", strconv.Itoa(params.Offset))
-	if params.Limit > 0 {
-		q.Set("limit", strconv.Itoa(params.Limit))
-	}
-	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("torbox: creating %s request: %w", label, err)
-	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	// TorBox's mylist endpoints cap EACH response at ~10,000 items regardless
+	// of the requested `limit`. A single un-paginated call therefore silently
+	// drops everything past the newest 10k — i.e. the oldest torrents become
+	// invisible (accounts with >10k torrents lose their tail, breaking
+	// playback of older library content). Page through with offset until a
+	// short page signals the end. params.Limit, when > 0, is treated as a
+	// safety ceiling on the TOTAL number of items fetched.
+	maxTotal := params.Limit
+	offset := params.Offset
+	var all []Torrent
 
-	slog.Debug("torbox "+label, "offset", params.Offset, "limit", params.Limit)
+	for {
+		u := base.JoinPath(endpoint)
+		q := u.Query()
+		q.Set("bypass_cache", strconv.FormatBool(params.BypassCache))
+		q.Set("offset", strconv.Itoa(offset))
+		q.Set("limit", strconv.Itoa(listPageSize))
+		u.RawQuery = q.Encode()
 
-	body, err := c.do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	var env apiResponse[[]Torrent]
-	if err := json.Unmarshal(body, &env); err != nil {
-		if len(body) > 0 && body[0] == '<' {
-			snippet := body
-			if len(snippet) > 200 {
-				snippet = snippet[:200]
-			}
-			slog.Warn("torbox "+label+": expected JSON, got non-JSON response",
-				"endpoint", endpoint,
-				"status", 200,
-				"body_preview", string(snippet),
-			)
-			slog.Debug("torbox "+label+": non-JSON response body",
-				"endpoint", endpoint,
-				"body", truncateBody(body),
-			)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
+		if err != nil {
+			return nil, fmt.Errorf("torbox: creating %s request: %w", label, err)
 		}
-		return nil, fmt.Errorf("torbox: decoding %s response: %w", label, err)
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+		slog.Debug("torbox "+label, "offset", offset, "limit", listPageSize)
+
+		body, err := c.do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		var env apiResponse[[]Torrent]
+		if err := json.Unmarshal(body, &env); err != nil {
+			if len(body) > 0 && body[0] == '<' {
+				snippet := body
+				if len(snippet) > 200 {
+					snippet = snippet[:200]
+				}
+				slog.Warn("torbox "+label+": expected JSON, got non-JSON response",
+					"endpoint", endpoint,
+					"status", 200,
+					"body_preview", string(snippet),
+				)
+				slog.Debug("torbox "+label+": non-JSON response body",
+					"endpoint", endpoint,
+					"body", truncateBody(body),
+				)
+			}
+			return nil, fmt.Errorf("torbox: decoding %s response: %w", label, err)
+		}
+
+		if env.Error != nil && *env.Error != "" {
+			return nil, fmt.Errorf("torbox %s API error: %s", label, *env.Error)
+		}
+
+		page := env.Data
+		all = append(all, page...)
+		slog.Debug("torbox "+label+" page", "offset", offset, "got", len(page), "total", len(all))
+
+		if len(page) < listPageSize {
+			break // short page → end of list
+		}
+		offset += len(page)
+		if maxTotal > 0 && len(all) >= maxTotal {
+			all = all[:maxTotal]
+			break
+		}
 	}
 
-	if env.Error != nil && *env.Error != "" {
-		return nil, fmt.Errorf("torbox %s API error: %s", label, *env.Error)
-	}
-
-	n := len(env.Data)
-	slog.Debug("torbox "+label+" result", "count", n)
-	return env.Data, nil
+	slog.Debug("torbox "+label+" result", "count", len(all))
+	return all, nil
 }
 
 // ListTorrents returns all torrents and their files from the user's TorBox account.
