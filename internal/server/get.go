@@ -268,6 +268,33 @@ func (s *Server) streamFileContent(w http.ResponseWriter, r *http.Request, file 
 			return
 		}
 
+		// TorBox's CDN sometimes returns HTTP 200/206 with a TEXT error body
+		// (e.g. "Too many requests" or an HTML page) instead of a proper
+		// 429/5xx status when it is rate-limiting or erroring. The status
+		// checks above treat that as success, so io.Copy below streams the
+		// error text to the client. Under rclone's vfs-cache (cache-mode
+		// full) that error text gets written to the cache AS THE FILE'S DATA,
+		// permanently corrupting the file until the cache entry is purged:
+		// ffprobe then reports duration=N/A / mis-detects the format, Plex
+		// playback fails, and *arrs flag good remuxes as "Sample". Real CDN
+		// media is binary; a text/html/json content-type is an error body, so
+		// treat it like a transient 429 (invalidate the URL, hang/poll).
+		if ct := strings.ToLower(proxyResp.Header.Get("Content-Type")); strings.HasPrefix(ct, "text/") || strings.Contains(ct, "html") || strings.Contains(ct, "json") {
+			proxyResp.Body.Close()
+			slog.Warn("GET: CDN returned a text/error body on a 2xx data response (disguised rate-limit/error) — not streaming, entering hang/poll",
+				"path", file.Path, "content_type", ct, "status", proxyResp.StatusCode,
+				"source", file.Source, "item_id", file.ItemID, "file_id", file.FileID,
+			)
+			if s.cfg.CDNTtlMinutes > 0 {
+				expiry := time.Now().Add(-1 * time.Hour)
+				if err := s.store.SetCDNURL(file.ID, "", expiry); err != nil {
+					slog.Error("GET: failed to invalidate CDN URL cache", "path", file.Path, "error", err)
+				}
+			}
+			s.handleGetCDNHang(w, r, file)
+			return
+		}
+
 		// Stream the CDN response directly to the client.
 		mime := file.MimeType
 		if mime == "" {
@@ -819,46 +846,46 @@ func (s *Server) serveDirListing(w http.ResponseWriter, reqPath string, depth st
 			immediate := map[string]childInfo{}
 
 			for _, rec := range records {
-			relPath := strings.TrimPrefix(rec.Path, prefix)
-			relPath = strings.TrimPrefix(relPath, "/")
+				relPath := strings.TrimPrefix(rec.Path, prefix)
+				relPath = strings.TrimPrefix(relPath, "/")
 
-			parts := strings.SplitN(relPath, "/", 2)
-			immediateName := parts[0]
+				parts := strings.SplitN(relPath, "/", 2)
+				immediateName := parts[0]
 
-			if _, exists := immediate[immediateName]; exists {
-				continue
-			}
-
-			if len(parts) > 1 {
-				// The file is nested deeper — the immediate child is a directory.
-				immediate[immediateName] = childInfo{isDir: true}
-			} else {
-				// Direct file in the requested directory.
-				mime := rec.MimeType
-				if mime == "" {
-					mime = "application/octet-stream"
+				if _, exists := immediate[immediateName]; exists {
+					continue
 				}
-				immediate[immediateName] = childInfo{
-					isDir:     false,
-					size:      rec.Size,
-					name:      rec.Name,
-					mime:      mime,
-					createdAt: rec.CreatedAt,
+
+				if len(parts) > 1 {
+					// The file is nested deeper — the immediate child is a directory.
+					immediate[immediateName] = childInfo{isDir: true}
+				} else {
+					// Direct file in the requested directory.
+					mime := rec.MimeType
+					if mime == "" {
+						mime = "application/octet-stream"
+					}
+					immediate[immediateName] = childInfo{
+						isDir:     false,
+						size:      rec.Size,
+						name:      rec.Name,
+						mime:      mime,
+						createdAt: rec.CreatedAt,
+					}
 				}
 			}
-		}
 
-		// Build response entries from the immediate children map.
-		baseHref := strings.TrimRight(normalised, "/") + "/"
-		for name, info := range immediate {
-			childHref := baseHref + name
-			if info.isDir {
-				childHref += "/"
-				responses = appendResponse(responses, childHref, true, 0, "", "", "", &seen)
-			} else {
-				responses = appendResponse(responses, childHref, false, info.size, info.name, info.mime, info.createdAt, &seen)
+			// Build response entries from the immediate children map.
+			baseHref := strings.TrimRight(normalised, "/") + "/"
+			for name, info := range immediate {
+				childHref := baseHref + name
+				if info.isDir {
+					childHref += "/"
+					responses = appendResponse(responses, childHref, true, 0, "", "", "", &seen)
+				} else {
+					responses = appendResponse(responses, childHref, false, info.size, info.name, info.mime, info.createdAt, &seen)
+				}
 			}
-		}
 		} // close else block
 	} // close depth block
 
