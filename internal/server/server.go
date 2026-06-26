@@ -119,6 +119,7 @@ type Config struct {
 	LogLevel           string // For landing page display
 	SyncIntervalMinute int    // For landing page display
 	SyncLimit          int    // For landing page display
+	SyncListPageSize   int    // For landing page display
 
 	// Pprof control.
 	EnablePprof bool // Enable /debug/pprof/ endpoints; default false

@@ -81,6 +81,7 @@ type LandingData struct {
 
 	// Sync config fields
 	SyncLimit int
+	SyncListPageSize int
 
 	// Auth config fields
 	AuthEnabled bool // true if HTTP Basic Auth is enabled
@@ -202,7 +203,8 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		CSRFToken:   s.csrfToken,
 
 		// Sync config
-		SyncLimit: s.cfg.SyncLimit,
+		SyncLimit:        s.cfg.SyncLimit,
+		SyncListPageSize: s.cfg.SyncListPageSize,
 
 		// Stats config
 		StatsInterval:    s.cfg.StatsIntervalSeconds,
