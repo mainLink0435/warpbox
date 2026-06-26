@@ -5,7 +5,19 @@ All notable changes to Warpbox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.6.0] - 2026-06-26
+
+### Added
+- Mylist pagination — all torrents/usenet items sync regardless of account size. TorBox caps each response at ~10,000 items; warpbox pages through with offset until exhaustion. (thanks @Fredddi43, closes #1)
+- Configurable `sync.list_page_size` — controls the per-request page window when paginating mylist API calls (default 5000, range 1–10000), shown on landing page
+- Exponential backoff in CDN hang/poll mode on repeated 429 rate-limit errors (15s → 30s → 60s → 2min → 5min max), preventing per-item requestdl death spirals
+- Item count on landing page — distinct torrents/usenet items alongside total files
+
+### Fixed
+- CDN text error body is no longer streamed and cached as file data. TorBox's CDN sometimes returns HTTP 200/206 with "Too many requests" or HTML body instead of 429; the GET handler now checks Content-Type before streaming. (thanks @Fredddi43, closes #3)
+
+### Changed
+- Removed `sync.limit` — pagination now fetches all items without a ceiling. The old cap was a workaround from before the pagination engine existed.
 
 ## [v0.5.4] - 2026-06-23
 
@@ -84,7 +96,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove live API credentials from repo — switch to `.template` files, refs #143
 - Fix pre-release audit documentation issues across multiple tickets, refs #109 #110 #138 #139
 
-[Unreleased]: /compare/v0.5.4...HEAD
+[Unreleased]: /compare/v0.6.0...HEAD
+[v0.6.0]: /compare/v0.5.4...v0.6.0
 
 [v0.5.4]: /compare/v0.5.3...v0.5.4
 
